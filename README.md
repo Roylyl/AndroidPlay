@@ -132,7 +132,7 @@ runtime-assets/
 
 将环境变量`ANDROIDPLAY_AUTH_ASSETS_DIR`设为实际`runtime-assets`目录的绝对路径。macOS未设置该变量时，默认读取当前用户的`Library/Application Support/AndroidPlay/runtime-assets`目录。
 
-认证文件缺失或为空时构建会失败；Android Studio的Run与命令行构建使用同一资源配置。APK应用签名密钥与CarPlay配件认证身份用途不同，不能互相替代。认证来源及已有检查见[认证来源说明](docs/ANDROIDPLAY_AUTH_SOURCE.md)。
+正常打包时，认证文件缺失或为空时构建会失败；Android Studio的Run与命令行构建使用同一资源配置。APK应用签名密钥与CarPlay配件认证身份用途不同，不能互相替代。认证来源及已有检查见[认证来源说明](docs/ANDROIDPLAY_AUTH_SOURCE.md)。
 
 ### 生成APK
 
@@ -149,6 +149,10 @@ runtime-assets/
 ```
 
 直接构建的产物为`mobile/build/outputs/apk/debug/mobile-debug.apk`。以上均为调试签名APK；使用不同签名重新构建时，无法直接覆盖原安装。APK和认证私钥不纳入源码版本管理。
+
+### GitHub源码检查
+
+CI显式使用`-Pandroidplay.sourceOnly=true`运行测试、lint和调试构建。该模式不接入本机外部认证目录，生成的APK不具备CarPlay认证能力，仅用于源码检查，不作为发行安装包。普通本地构建仍要求认证文件；`assembleStandaloneDebug`不允许使用无认证模式。
 
 ### 工程结构
 

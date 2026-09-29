@@ -23,7 +23,7 @@ jobs:
           packages: platform-tools platforms;android-37.0 build-tools;36.0.0 ndk;29.0.14206865
       - uses: gradle/actions/setup-gradle@v4
       - name: Unit tests, lint and source-only debug build
-        run: ./gradlew :shared:testDebugUnitTest :common:testDebugUnitTest :mobile:lintDebug :mobile:assembleDebug --stacktrace
+        run: ./gradlew -Pandroidplay.sourceOnly=true :shared:testDebugUnitTest :common:testDebugUnitTest :mobile:lintDebug :mobile:assembleDebug --stacktrace
       - name: Test reports
         if: always()
         uses: actions/upload-artifact@v4

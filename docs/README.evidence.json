@@ -100,13 +100,13 @@
     },
     {
       "id": "auth",
-      "quote": "认证文件缺失或为空时构建会失败",
+      "quote": "正常打包时，认证文件缺失或为空时构建会失败",
       "level": "implementation",
       "reasoning": "依据当前配置、实现或注明日期的验证记录，结论限于对应范围。",
       "evidence": [
         {
           "path": "mobile/build.gradle.kts",
-          "excerpt": "check(allowed.all { it.isFile && it.length() > 0 })"
+          "excerpt": "check(!requiresAuthentication || allowed.all { it.isFile && it.length() > 0 })"
         }
       ]
     },
