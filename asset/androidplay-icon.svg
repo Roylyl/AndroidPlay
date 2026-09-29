@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 108 108" role="img" aria-label="AndroidPlay图标">
+  <path id="background" fill="#0C111B" d="M24 0H84Q108 0 108 24V84Q108 108 84 108H24Q0 108 0 84V24Q0 0 24 0Z"/>
+  <g id="mark">
+    <path fill="none" stroke="#A6C8FF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M41 28Q54 18 67 28M47 34Q54 28 61 34"/>
+    <path fill="none" stroke="#A6C8FF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M34 42H74Q82 42 82 50V68Q82 76 74 76H34Q26 76 26 68V50Q26 42 34 42Z"/>
+    <path fill="#F4F8FF" d="M48 51Q48 49 50 50L62 57Q64 59 62 60L50 67Q48 68 48 66Z"/>
+  </g>
+</svg>

@@ -1,0 +1,52 @@
+# Android Studio / editor state
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+
+# Local SDK, Gradle and native build state
+local.properties
+.gradle/
+.kotlin/
+**/build/
+.cxx/
+.externalNativeBuild/
+captures/
+node_modules/
+
+# Local credentials, signing keys and environment settings
+.private/
+runtime-assets/
+offline-mfi/
+.env
+.env.*
+!.env.example
+*.pk8
+*.p7b
+*.p12
+*.pfx
+*.pem
+*.key
+*.jks
+*.keystore
+release-signing.properties
+keystore.properties
+secrets.properties
+
+# Installable artifacts and local device diagnostics
+*.apk
+*.aab
+*.apks
+*.xapk
+*.hprof
+*.log
+/agent_docs/
+
+# Historical upstream publishing job; do not publish its download site by accident
+/.github/workflows/pages.yml
+
+# Operating system files
+.DS_Store
+._*
+Thumbs.db
