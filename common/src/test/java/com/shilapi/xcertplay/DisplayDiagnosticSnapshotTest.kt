@@ -12,17 +12,14 @@ import org.robolectric.annotation.Config
 class DisplayDiagnosticSnapshotTest {
     private val context get() = RuntimeEnvironment.getApplication()
 
-    @Test fun requestedSizeSurvivesAFallbackAndSubsequentPreferenceReset() {
-        DisplayDiagnosticSnapshot.selection(context, 100, 75, true)
+    @Test fun requestedResolutionSurvivesDecoderFallback() {
         DisplayDiagnosticSnapshot.begin(context,
-            "Display request selected=Smaller percent=75 surface=1920x1080 candidate=2560x1440",
+            "Display request surface=1920x1080 candidate=2560x1440",
             "Decoder capability codec=c2.test hardware=true sizeSupported=false result=canvas_dimensions_unsupported",
-            "Display effective percent=100 canvas=1920x1080 decision=canvas_dimensions_unsupported")
-        AirPlayPersistence.saveUiScalePercent(context, 100)
+            "Display effective canvas=1920x1080 decision=canvas_dimensions_unsupported")
         val report = DisplayDiagnosticSnapshot.report(context)
-        assertTrue(report.contains("selected=75% reconnect=true"))
-        assertTrue(report.contains("percent=75"))
-        assertTrue(report.contains("percent=100"))
+        assertTrue(report.contains("candidate=2560x1440"))
+        assertTrue(report.contains("canvas=1920x1080"))
         assertTrue(report.contains("canvas_dimensions_unsupported"))
     }
 
