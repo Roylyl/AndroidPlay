@@ -4,13 +4,13 @@
   "claims": [
     {
       "id": "version",
-      "quote": "显示版本为1.0.0，当前内部构建号为37。",
+      "quote": "显示版本为1.0.1，当前内部构建号为40。",
       "level": "configuration",
       "reasoning": "依据当前配置、实现或注明日期的验证记录，结论限于对应范围。",
       "evidence": [
         {
           "path": "mobile/build.gradle.kts",
-          "excerpt": "versionCode = 37"
+          "excerpt": "versionCode = 40"
         }
       ]
     },
@@ -47,30 +47,6 @@
         {
           "path": "gradle/libs.versions.toml",
           "excerpt": "agp = \"9.4.1\""
-        }
-      ]
-    },
-    {
-      "id": "scale",
-      "quote": "缩放通过调整上报给iPhone的屏幕物理尺寸实现，不修改视频像素宽高或触摸坐标。",
-      "level": "implementation",
-      "reasoning": "依据当前配置、实现或注明日期的验证记录，结论限于对应范围。",
-      "evidence": [
-        {
-          "path": "shared/src/main/java/com/shilapi/xcertplay/airplay/CarPlayUiScale.kt",
-          "excerpt": "return display.copy(widthPhysicalMm = millimeters(baseWidth), heightPhysicalMm = millimeters(baseHeight))"
-        }
-      ]
-    },
-    {
-      "id": "scale-device",
-      "quote": "四档均已在同一设备组合上实测，解码视频保持2400×1080，控件大小依次递增",
-      "level": "device",
-      "reasoning": "依据当前配置、实现或注明日期的验证记录，结论限于对应范围。",
-      "evidence": [
-        {
-          "path": "docs/ANDROIDPLAY_VALIDATION.md",
-          "excerpt": "四档均完成当前设备组合下的配置、视频尺寸与画面观察验证。"
         }
       ]
     },

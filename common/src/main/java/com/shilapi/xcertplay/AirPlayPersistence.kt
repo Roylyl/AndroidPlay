@@ -6,7 +6,6 @@ import com.shilapi.xcertplay.airplay.AirPlayDisplaySettings
 import com.shilapi.xcertplay.airplay.AirPlayPhysicalSizeBasis
 import com.shilapi.xcertplay.airplay.CarPlayDisplayScale
 import com.shilapi.xcertplay.airplay.CarPlayClusterDisplay
-import com.shilapi.xcertplay.airplay.CarPlayUiScale
 import com.shilapi.xcertplay.airplay.AirPlayIdentity
 import com.shilapi.xcertplay.airplay.PairingStore
 import com.shilapi.xcertplay.airplay.SafeAreaCodec
@@ -21,6 +20,7 @@ import java.io.File
 /** SharedPreferences persistence for the accessory identity and paired controllers. */
 object AirPlayPersistence {
     private const val PREFS = "xcertplay_airplay"
+    private const val ACCESSORY_PREFS = "androidplay_accessory_v2"
     private const val KEY_IDENT_PRIVATE = "identity_private"
     private const val KEY_IDENT_PUBLIC = "identity_public"
     private const val KEY_PAIRING_ID = "pairing_id"
@@ -35,7 +35,6 @@ object AirPlayPersistence {
     private const val KEY_LOCKDOWN_ROOT_PRIVATE = "lockdown_root_private"
     private const val KEY_LOCKDOWN_ROOT_CERT = "lockdown_root_cert"
     private const val KEY_DISPLAY_SCALE_TENTHS = "display_scale_tenths"
-    private const val KEY_UI_SCALE_PERCENT = "ui_scale_percent"
     private const val KEY_HEVC_ENABLED = "hevc_enabled"
     private const val KEY_HEVC_SOFTWARE_DECODER = "hevc_software_decoder"
     private const val KEY_ADVANCED_AUDIO_CHANNEL_MAPPING = "advanced_audio_channel_mapping"
@@ -94,16 +93,6 @@ object AirPlayPersistence {
     fun loadHevcEnabled(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_HEVC_ENABLED, false)
-
-    fun loadUiScalePercent(context: Context): Int = CarPlayUiScale.sanitize(
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getInt(KEY_UI_SCALE_PERCENT, CarPlayUiScale.DEFAULT),
-    )
-
-    fun saveUiScalePercent(context: Context, percent: Int) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putInt(KEY_UI_SCALE_PERCENT, CarPlayUiScale.sanitize(percent)).apply()
-    }
 
     fun saveHevcEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -530,7 +519,7 @@ object AirPlayPersistence {
     }
 
     fun loadIdentity(context: Context): AirPlayIdentity {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences(ACCESSORY_PREFS, Context.MODE_PRIVATE)
         val privateKey = prefs.getString(KEY_IDENT_PRIVATE, null)
         val publicKey = prefs.getString(KEY_IDENT_PUBLIC, null)
         val pairingId = prefs.getString(KEY_PAIRING_ID, null)
@@ -547,7 +536,7 @@ object AirPlayPersistence {
     }
 
     fun loadPairings(context: Context, onSave: (String, ByteArray) -> Unit): PairingStore {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences(ACCESSORY_PREFS, Context.MODE_PRIVATE)
         val store = PairingStore(onSave)
         for (identifier in prefs.getStringSet(KEY_PAIRING_IDS, emptySet()).orEmpty()) {
             prefs.getString("pairing.$identifier", null)?.let { store.save(identifier, it.decodeHex()) }
@@ -556,7 +545,7 @@ object AirPlayPersistence {
     }
 
     fun savePairing(context: Context, identifier: String, longTermPublicKey: ByteArray) {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences(ACCESSORY_PREFS, Context.MODE_PRIVATE)
         val identifiers = prefs.getStringSet(KEY_PAIRING_IDS, emptySet()).orEmpty().toMutableSet()
         identifiers.add(identifier)
         prefs.edit()

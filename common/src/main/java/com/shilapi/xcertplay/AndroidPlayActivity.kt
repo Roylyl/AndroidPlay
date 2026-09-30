@@ -226,24 +226,12 @@ class AndroidPlayActivity : ComponentActivity() {
             }.setNegativeButton("关闭", null).show()
     }
     private fun displaySettings() {
-        AlertDialog.Builder(this).setTitle("CarPlay设置")
-            .setItems(arrayOf("CarPlay帧率", "图标和文字缩放")) { _, index ->
-                if (index == 0) {
-                    val values = listOf(30, 60, 90, 120)
-                    AlertDialog.Builder(this).setTitle("CarPlay帧率（高刷为实验性请求）")
-                        .setSingleChoiceItems(arrayOf("30fps", "60fps（推荐）", "90fps（实验性）", "120fps（实验性）"), values.indexOf(AirPlayPersistence.loadFps(this))) { dialog, which ->
-                            dialog.dismiss()
-                            updateNetwork(reconnect = true) { AirPlayPersistence.saveFps(this, values[which]) }
-                        }.setNegativeButton("取消", null).show()
-                } else {
-                    val values = listOf(75, 100, 125, 150)
-                    AlertDialog.Builder(this).setTitle("图标和文字大小；选择后自动重连")
-                        .setSingleChoiceItems(arrayOf("75%（小）", "100%（默认）", "125%（大）", "150%（更大）"), values.indexOf(AirPlayPersistence.loadUiScalePercent(this))) { dialog, which ->
-                            dialog.dismiss()
-                            updateNetwork(reconnect = true) { AirPlayPersistence.saveUiScalePercent(this, values[which]) }
-                        }.setNegativeButton("取消", null).show()
-                }
-            }.setNegativeButton("关闭", null).show()
+        val values = listOf(30, 60, 90, 120)
+        AlertDialog.Builder(this).setTitle("CarPlay帧率（120→90→60自动回退）")
+            .setSingleChoiceItems(arrayOf("30fps", "60fps（推荐）", "90fps（实验性）", "120fps（实验性）"), values.indexOf(AirPlayPersistence.loadFps(this))) { dialog, which ->
+                dialog.dismiss()
+                updateNetwork(reconnect = true) { AirPlayPersistence.saveFps(this, values[which]) }
+            }.setNegativeButton("取消", null).show()
     }
     private fun openHotspotSettings() {
         val intent = Intent("android.settings.TETHER_SETTINGS")

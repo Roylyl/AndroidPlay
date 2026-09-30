@@ -22,6 +22,7 @@ import android.util.Log
 import com.shilapi.xcertplay.airplay.AirPlayConfig
 import com.shilapi.xcertplay.airplay.AirPlayContact
 import com.shilapi.xcertplay.airplay.AirPlayDeviceInfo
+import com.shilapi.xcertplay.airplay.AirPlayKnobState
 import com.shilapi.xcertplay.airplay.AirPlayIdentity
 import com.shilapi.xcertplay.airplay.AirPlayMediaHandler
 import com.shilapi.xcertplay.airplay.AirPlaySession
@@ -253,16 +254,10 @@ class CarPlayController(
             uiListener?.onDeviceInfo(session, info)
         }
 
-        // The user tapped the car icon in CarPlay: show the head unit's own menu, like its Home button.
-        // The session keeps running in the background, so returning to AndroidPlay resumes CarPlay.
+        // CarPlay owns its navigation stack. Only its requestUI returns to the host menu.
         override fun onHostUiRequested(session: AirPlaySession) {
-            debugLog("CarPlay requested the car UI; opening the head-unit home screen")
-            runCatching {
-                appContext.startActivity(
-                    Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
-            }.onFailure { debugLog("Car home screen could not open: ${it.javaClass.simpleName}") }
+            if (closed || activeSession !== session) return
+            debugLog("CarPlay requested the AndroidPlay home screen")
             uiListener?.onHostUiRequested(session)
         }
 
@@ -347,6 +342,24 @@ class CarPlayController(
             true
         } catch (_: Exception) {
             false
+        }
+    }
+
+    /** Forward Android Back to CarPlay; do not infer the current phone-rendered page. */
+    fun sendBack(onResult: (Boolean) -> Unit) {
+        val session = activeSession
+        if (closed || session == null) {
+            mainHandler.post { onResult(false) }
+            return
+        }
+        try {
+            touchExecutor.execute {
+                val sent = !closed && activeSession === session &&
+                    session.sendKnob(AirPlayKnobState(back = true))
+                mainHandler.post { onResult(sent) }
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            mainHandler.post { onResult(false) }
         }
     }
 

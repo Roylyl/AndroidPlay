@@ -4,10 +4,10 @@
 
 <h1 align="center">AndroidPlay</h1>
 
-<p align="center">基于DiPlay的安卓无线CarPlay接收应用，支持系统热点连接、横屏全屏显示、自定义帧率与界面缩放。</p>
+<p align="center">基于DiPlay的安卓无线CarPlay接收应用，支持系统热点连接、横屏全屏显示、原生像素显示与帧率选择。</p>
 
 <p align="center">
-  <a href="mobile/build.gradle.kts"><img src="https://img.shields.io/badge/version-1.0.0-a6c8ff?style=flat-square" alt="版本1.0.0"></a>
+  <a href="mobile/build.gradle.kts"><img src="https://img.shields.io/badge/version-1.0.1-a6c8ff?style=flat-square" alt="版本1.0.1"></a>
   <a href="#安装与连接"><img src="https://img.shields.io/badge/Android-9%2B-555555?style=flat-square" alt="最低系统配置Android9"></a>
   <a href="#验证与限制"><img src="https://img.shields.io/badge/status-experimental-555555?style=flat-square" alt="实验性项目"></a>
 </p>
@@ -22,7 +22,7 @@
 
 AndroidPlay安装在Android手机或车机上，由iPhone提供CarPlay界面。连接方式固定为：**Android开启系统热点，iPhone连接该热点，再通过蓝牙完成连接引导**。本版聚焦无线CarPlay，不提供有线USB、Android Auto、Wi-Fi直连或HUD入口。
 
-已在一组真实设备上完成iPhone投屏和四档缩放验证。项目仍使用实验性CarPlay认证身份；源码不包含认证文件，构建前需要单独配置。本文不提供已核实的AndroidPlay公开Release下载入口。
+已在一组真实设备上完成iPhone投屏验证。1.0.1已移除缩放功能。项目仍使用实验性CarPlay认证身份；源码不包含认证文件，构建前需要单独配置。本文不提供已核实的AndroidPlay公开Release下载入口。
 
 ## 主要功能
 
@@ -30,7 +30,7 @@ AndroidPlay安装在Android手机或车机上，由iPhone提供CarPlay界面。�
 - **系统热点连接**：使用Android系统热点承载投屏，蓝牙用于首次配对及连接引导。
 - **热点信息读取**：启动和连接前尝试读取热点配置；系统不允许读取时，可手动填写一次。
 - **横屏全屏**：支持左右横屏，隐藏系统状态栏和导航栏，并配置挖孔区域显示。
-- **显示调节**：提供四档界面缩放和四档帧率请求，选择后自动重连应用设置。
+- **显示调节**：按屏幕物理像素请求视频，提供四档帧率请求与高帧率失败回退。
 - **连接管理**：可返回首页管理连接，通过前台服务维持会话，并在连接设置中断开。
 
 ## 安装与连接
@@ -44,7 +44,7 @@ AndroidPlay安装在Android手机或车机上，由iPhone提供CarPlay界面。�
 | 网络 | Android系统开启WPA2热点，iPhone接入该热点 |
 | 安装包 | 包含可用认证资源的AndroidPlay APK；源码构建方法见下文 |
 
-最低系统版本来自工程配置，不代表所有Android9及以上设备都经过验证。应用包名为`com.androidplay.app`，显示版本为1.0.0，当前内部构建号为37。
+最低系统版本来自工程配置，不代表所有Android9及以上设备都经过验证。应用包名为`com.androidplay.app`，显示版本为1.0.1，当前内部构建号为40。
 
 1. 在Android端安装APK，打开AndroidPlay并按系统提示授权。
 2. 在Android系统设置中开启WPA2热点，让iPhone连接该热点。热点密码为8至63位。
@@ -58,36 +58,29 @@ AndroidPlay安装在Android手机或车机上，由iPhone提供CarPlay界面。�
 | 入口 | 用途 |
 | --- | --- |
 | 打开CarPlay | 发起连接或回到已有CarPlay画面 |
-| CarPlay设置 | 调整帧率、图标和文字缩放 |
+| CarPlay设置 | 调整帧率 |
 | 选择iPhone | 选择已配对的iPhone |
 | 连接设置 | 读取或填写热点信息、打开系统设置、检查权限、断开连接 |
 
-在投屏页使用系统返回操作可回到首页。断开连接不会关闭Android系统热点。应用会发布接收服务，但Bonjour广播本身不能保证AndroidPlay出现在iPhone“其他汽车”列表中；连接热点也不等于完成CarPlay配对。
+在投屏页使用安卓系统返回键时，先向CarPlay发送返回按钮；CarPlay请求返回车机界面时，打开AndroidPlay首页。未连接时返回键直接回到AndroidPlay首页。断开连接不会关闭Android系统热点。应用会发布接收服务，但Bonjour广播本身不能保证AndroidPlay出现在iPhone“其他汽车”列表中；连接热点也不等于完成CarPlay配对。
 
 ## 显示设置
 
-### 图标和文字缩放
+### 原生显示
 
-进入“CarPlay设置→图标和文字缩放”，选择以下档位：
-
-| 档位 | 显示效果 | 真机验证 |
-| --- | --- | --- |
-| 75% | 较小的图标、文字和控件 | 已观察到视觉变化 |
-| 100% | 默认大小 | 已观察到视觉变化 |
-| 125% | 较大的图标、文字和控件 | 已观察到视觉变化 |
-| 150% | 四档中最大的控件 | 已观察到视觉变化 |
-
-缩放通过调整上报给iPhone的屏幕物理尺寸实现，不修改视频像素宽高或触摸坐标。iPhone会重新排列界面，封面、留白等元素不一定严格等比缩放。
-
-**四档均已在同一设备组合上实测，解码视频保持2400×1080，控件大小依次递增**。选择档位后，应用结束旧会话并自动重连；每次创建会话都会重新读取保存的设置。
+1.0.1已移除界面缩放入口及物理尺寸倍率，不再读取旧版本保存的缩放设置。上报的像素宽高与物理尺寸来自屏幕配置，触摸坐标不使用缩放倍率。
 
 应用按当前屏幕模式的物理像素尺寸请求视频。Android解码输出尺寸不等同于iPhone内部渲染尺寸：实测曾出现1912×860的iPhone原始CarPlay截图，该差异仍待查明，不能宣称已经实现全链路原生分辨率。
 
 ### 帧率
 
-提供30fps、60fps、90fps和120fps，默认60fps。90fps与120fps为实验性请求，需要屏幕模式和解码能力满足条件；检查不通过时回落到60fps。
+提供30fps、60fps、90fps和120fps，默认60fps。90fps与120fps为实验性请求。选择120fps时先请求120fps；发起CarPlay连接后20秒未启动视频，或出画面前会话结束，则改为90fps重连，仍失败则改为60fps。选择90fps时失败后改为60fps，60fps不再降档。回退会显示提示并保存当前帧率；配对之前的失败、主动断开和成功出画面后的断线不会触发降档。
 
-该设置不会插帧，也不保证iPhone按请求帧率输出。**90fps和120fps的实际视频帧率尚未测量确认**。帧率修改同样会触发自动重连。
+该设置不会插帧，也不保证iPhone按请求帧率输出。**90fps和120fps的实际视频帧率尚未测量确认**。选择档位后，应用结束旧会话并自动重连。
+
+### 车机名称与身份
+
+名称和型号均固定为AndroidPlay。1.0.1构建40使用独立的配对身份存储，首次连接生成新的配对密钥与UUID；后续启动沿用该身份，序列号为ANDROIDPLAY前缀加独立设备标识。旧版保存的型号不再用于上报，热点配置保留。升级后需在iPhone重新确认CarPlay，旧车机记录可在iPhone“设置→通用→CarPlay”中忽略后重新连接。
 
 ## 权限与热点信息
 
@@ -167,7 +160,7 @@ CI显式使用`-Pandroidplay.sourceOnly=true`运行测试、lint和调试构建�
 
 ## 验证与限制
 
-2026年9月30日的构建37记录确认：APK构建与Android真机安装通过，iPhone能够连接投屏，75%/100%/125%/150%四档缩放可改变实际画面，四档解码输出均为2400×1080。详细过程见[验证记录](docs/ANDROIDPLAY_VALIDATION.md)。
+历史版本1.0.0的构建37记录确认：APK构建与Android真机安装通过，iPhone能够连接投屏，75%/100%/125%/150%四档缩放可改变实际画面，四档解码输出均为2400×1080。详细过程见[验证记录](docs/ANDROIDPLAY_VALIDATION.md)。
 
 以下事项尚未完成独立或全面验证：
 
@@ -186,7 +179,6 @@ CI显式使用`-Pandroidplay.sourceOnly=true`运行测试、lint和调试构建�
 | 找不到iPhone | 先完成系统蓝牙配对，检查附近设备权限，再点击“选择iPhone” |
 | 提示缺少认证文件 | 核对外部认证目录，重新构建包含所需资源的APK |
 | 连接失败 | 记录界面显示的具体错误，检查热点、蓝牙配对及权限，在连接设置中断开后重试 |
-| 缩放切换后暂时没有画面 | 等待自动重连完成；单纯切换菜单值不会修改已经建立的视频会话 |
 | 仍有黑边或方向异常 | 检查厂商的应用全屏、挖孔和多窗口设置，系统策略可能覆盖应用窗口配置 |
 
 ## 来源与许可

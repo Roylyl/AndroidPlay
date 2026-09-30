@@ -9,8 +9,6 @@ import android.graphics.Color
 import android.graphics.SurfaceTexture
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.media.MediaCodecList
-import android.media.MediaFormat
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -34,8 +32,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.shilapi.xcertplay.airplay.AirPlayConfig
 import com.shilapi.xcertplay.airplay.AirPlayDisplaySettings
 import com.shilapi.xcertplay.airplay.AirPlayPhysicalSizeMm
-import com.shilapi.xcertplay.airplay.CarPlayDisplayScale
-import com.shilapi.xcertplay.airplay.CarPlayUiScale
+import com.shilapi.xcertplay.airplay.CarPlayFrameRateFallback
 import com.shilapi.xcertplay.airplay.AirPlayDisplayConfig
 import com.shilapi.xcertplay.airplay.AirPlayIdentity
 import com.shilapi.xcertplay.airplay.AirPlayIcon
@@ -85,7 +82,7 @@ class CarPlayHostActivity : ComponentActivity() {
             modelIdentifier = normalizedModel(),
             manufacturer = normalizedManufacturer(),
             serialNumber = "ANDROIDPLAY-" + AndroidPlayBootstrap.deviceId(airPlayIdentity).replace(":", ""),
-            firmwareVersion = "1.0.0",
+            firmwareVersion = "1.0.1",
             hardwareVersion = "1.0",
             carPlayUsbInterfaceNumber = 3,
             locationInformationEnabled = locationReportingEnabled,
@@ -135,8 +132,6 @@ class CarPlayHostActivity : ComponentActivity() {
     private var currentSurfaceTexture: SurfaceTexture? = null
     private var activeDisplaySize: DisplaySize? = null
     private var pendingDisplaySize: DisplaySize? = null
-    private var displayScaleTenths = CarPlayDisplayScale.DEFAULT_TENTHS
-    private var uiScalePercent = CarPlayUiScale.DEFAULT
     private var displayDiagnosticAttempt: String? = null
     private var hevcEnabled = true
     private var hevcSoftwareDecoderEnabled = false
@@ -188,6 +183,37 @@ class CarPlayHostActivity : ComponentActivity() {
     private var gestureStartY = 0f
     private val shuttingDown = AtomicBoolean(false)
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var frameRateGuard = CarPlayFrameRateFallback(60)
+    private var frameRateTimeout: Runnable? = null
+
+    private fun armFrameRateFallback(generation: Int) {
+        if (generation != restartGeneration || !frameRateGuard.negotiationStarted()) return
+        val timeout = Runnable {
+            if (generation == restartGeneration) retryLowerFrameRate()
+        }
+        frameRateTimeout = timeout
+        mainHandler.postDelayed(timeout, 20_000L)
+    }
+
+    private fun cancelFrameRateFallback() {
+        frameRateTimeout?.let(mainHandler::removeCallbacks)
+        frameRateTimeout = null
+        frameRateGuard.cancel()
+    }
+
+    private fun retryLowerFrameRate(): Boolean {
+        if (shuttingDown.get() || menuOpen || handshakeResetInProgress ||
+            !CarPlayBackgroundSession.isOwner(this)) return false
+        val previous = fps
+        val next = frameRateGuard.failed() ?: return false
+        cancelFrameRateFallback()
+        AirPlayPersistence.saveFps(this, next)
+        fps = next
+        val message = "${previous}fps协商未启动视频，改用${next}fps重连"
+        android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()
+        restartCarPlay(message)
+        return true
+    }
     private val teardownExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val airPlayCommandExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val logLines = ArrayDeque<LogEntry>()
@@ -261,7 +287,19 @@ class CarPlayHostActivity : ComponentActivity() {
             this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    showAndroidPlayHome()
+                    val current = controller
+                    if (current == null || !CarPlayBackgroundSession.active) {
+                        showAndroidPlayHome()
+                        return
+                    }
+                    val generation = restartGeneration
+                    current.sendBack { sent ->
+                        if (generation != restartGeneration || controller !== current) return@sendBack
+                        if (!sent) {
+                            android.widget.Toast.makeText(this@CarPlayHostActivity,
+                                "CarPlay返回操作未发送，请等待连接恢复", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
                 }
             },
         )
@@ -284,9 +322,7 @@ class CarPlayHostActivity : ComponentActivity() {
     }
 
     private fun loadPersistedSettings() {
-        displayScaleTenths = CarPlayDisplayScale.DEFAULT_TENTHS
         // Apply the user setting to the physical dimensions advertised in the next session.
-        uiScalePercent = AirPlayPersistence.loadUiScalePercent(this)
         hevcEnabled = AirPlayPersistence.loadHevcEnabled(this)
         hevcSoftwareDecoderEnabled =
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
@@ -497,44 +533,6 @@ class CarPlayHostActivity : ComponentActivity() {
         MfiTarget.REMOTE -> "Remote"
     }
 
-    private data class CanvasSupport(val supported: Boolean, val reason: String, val details: String)
-
-    private fun largerCanvasSupport(display: AirPlayDisplayConfig): CanvasSupport = try {
-        val mime = if (hevcEnabled) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
-        // Match MediaCodec.createDecoderByType's first suitable decoder; do not silently force
-        // an enlarged stream through a software decoder on a slower head unit.
-        val decoder = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.firstOrNull {
-            !it.isEncoder && it.supportedTypes.any { type -> type.equals(mime, ignoreCase = true) }
-        }
-        if (decoder == null) {
-            CanvasSupport(false, "no_decoder", "Decoder capability mime=$mime result=no_decoder")
-        } else {
-            val hardware = if (Build.VERSION.SDK_INT >= 29) decoder.isHardwareAccelerated
-                else !decoder.name.startsWith("OMX.google.") && !decoder.name.startsWith("c2.android.")
-            val video = decoder.getCapabilitiesForType(mime).videoCapabilities
-            val sizeSupported = video?.isSizeSupported(display.widthPixels, display.heightPixels) == true
-            val rateSupported = sizeSupported && video?.areSizeAndRateSupported(
-                display.widthPixels, display.heightPixels, display.fps.toDouble()) == true
-            val reason = when {
-                !hardware -> "software_decoder"
-                hevcEnabled && hevcSoftwareDecoderEnabled -> "software_hevc_selected"
-                video == null -> "no_video_capabilities"
-                !sizeSupported -> "canvas_dimensions_unsupported"
-                !rateSupported -> "frame_rate_unsupported"
-                else -> "supported"
-            }
-            CanvasSupport(reason == "supported", reason,
-                "Decoder capability codec=${decoder.name} mime=$mime hardware=$hardware " +
-                    "sizeSupported=$sizeSupported rateSupported=$rateSupported " +
-                    "widths=${video?.supportedWidths} heights=${video?.supportedHeights} " +
-                    "alignment=${video?.widthAlignment}x${video?.heightAlignment} " +
-                    "fpsRange=${video?.supportedFrameRates} result=$reason")
-        }
-    } catch (error: Exception) {
-        CanvasSupport(false, "capability_query_${error.javaClass.simpleName}",
-            "Decoder capability query failed error=${error.javaClass.simpleName}")
-    }
-
     private fun createAirPlayConfig(size: DisplaySize): AirPlayConfig {
         val physical = resolvePhysicalSize(size)
         val baseDisplay = AirPlayDisplayConfig(
@@ -544,51 +542,32 @@ class CarPlayHostActivity : ComponentActivity() {
             heightPhysicalMm = physical.heightMm,
             fps = fps,
         )
-        val resolutionDisplay = baseDisplay // Native pixels; legacy resolution multipliers never apply.
-        val requestedPercent = uiScalePercent
-        val scaledDisplay = CarPlayUiScale.apply(resolutionDisplay, uiScalePercent)
-        val candidate = scaledDisplay
-        val support = CanvasSupport(true, "physical_size", "UI size changes physical dimensions; video canvas is unchanged")
-        appendLog("CarPlay size=${CarPlayUiScale.label(uiScalePercent)} physical=${scaledDisplay.widthPhysicalMm}x${scaledDisplay.heightPhysicalMm}mm")
-        var display = scaledDisplay.copy(
+        val display = baseDisplay.copy(
             safeArea = AirPlaySafeArea.toInsets(
                 mapping = null,
                 activityWidthPixels = size.width,
                 activityHeightPixels = size.height,
-                displayWidthPixels = scaledDisplay.widthPixels,
-                displayHeightPixels = scaledDisplay.heightPixels,
+                displayWidthPixels = baseDisplay.widthPixels,
+                displayHeightPixels = baseDisplay.heightPixels,
             ),
             safeAreaDrawOutside = safeAreaDrawOutside,
         )
-        if (display.fps > 60) {
-            val screen = windowManager.defaultDisplay
-            val mode = screen.supportedModes.filter {
-                it.physicalWidth == screen.mode.physicalWidth &&
-                    it.physicalHeight == screen.mode.physicalHeight && it.refreshRate >= display.fps - 1f
-            }.minByOrNull { it.refreshRate }
-            if (mode == null || !largerCanvasSupport(display).supported) {
-                val requestedFps = display.fps
-                display = display.copy(fps = 60)
-                android.widget.Toast.makeText(this, "屏幕或解码器不支持当前尺寸的${requestedFps}fps，已按60fps请求。", android.widget.Toast.LENGTH_LONG).show()
-            } else {
-                window.attributes = window.attributes.apply { preferredDisplayModeId = mode.modeId }
-            }
-        }
+        val screen = windowManager.defaultDisplay
+        val mode = screen.supportedModes.filter {
+            it.physicalWidth == screen.mode.physicalWidth &&
+                it.physicalHeight == screen.mode.physicalHeight && it.refreshRate >= display.fps - 1f
+        }.minByOrNull { it.refreshRate }
+        window.attributes = window.attributes.apply { preferredDisplayModeId = mode?.modeId ?: 0 }
         if (Build.VERSION.SDK_INT >= 30) {
             runCatching { currentSurface?.setFrameRate(display.fps.toFloat(), Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE) }
         }
-        val requestSummary = "Display request selected=${CarPlayUiScale.label(requestedPercent)} percent=$requestedPercent " +
-            "surface=${size.width}x${size.height} resolution=${displayScaleTenths * 10}% " +
-            "base=${resolutionDisplay.widthPixels}x${resolutionDisplay.heightPixels} " +
-            "candidate=${candidate.widthPixels}x${candidate.heightPixels} fps=$fps " +
+        val requestSummary = "Display request native=${size.width}x${size.height} fps=$fps " +
             "codec=${if (hevcEnabled) "HEVC" else "H.264"} softwareHevc=$hevcSoftwareDecoderEnabled"
-        val effectiveSummary = "Display effective percent=$uiScalePercent " +
-            "canvas=${display.widthPixels}x${display.heightPixels} decision=${support.reason} " +
+        val effectiveSummary = "Display effective canvas=${display.widthPixels}x${display.heightPixels} " +
             "physical=${display.widthPhysicalMm}x${display.heightPhysicalMm}mm safeArea=${display.safeArea} " +
             "drawOutside=${display.safeAreaDrawOutside}"
-        displayDiagnosticAttempt = DisplayDiagnosticSnapshot.begin(this, requestSummary, support.details, effectiveSummary)
+        displayDiagnosticAttempt = DisplayDiagnosticSnapshot.begin(this, requestSummary, "Native physical dimensions; no scaling", effectiveSummary)
         appendLog(requestSummary)
-        appendLog(support.details)
         appendLog(effectiveSummary)
         return AirPlayConfig(
             deviceName = "AndroidPlay",
@@ -636,11 +615,9 @@ class CarPlayHostActivity : ComponentActivity() {
             basis = physicalSizeBasis,
         )
 
-    private fun normalizedManufacturer(): String =
-        manufacturer.trim().ifBlank { AirPlayPersistence.DEFAULT_MANUFACTURER }
+    private fun normalizedManufacturer(): String = "AndroidPlay"
 
-    private fun normalizedModel(): String =
-        model.trim().ifBlank { AirPlayPersistence.DEFAULT_MODEL }
+    private fun normalizedModel(): String = "AndroidPlay"
 
     private fun createMediaSink(
         videoWidth: Int,
@@ -679,12 +656,20 @@ class CarPlayHostActivity : ComponentActivity() {
                     if (controllerGeneration != restartGeneration) {
                         return@runOnUiThread
                     }
+                    armFrameRateFallback(controllerGeneration)
                     activeAirPlaySession = session
                     CarPlayBackgroundSession.active = true
                     reconnectAttempts = 0
                     syncAirPlayDarkMode()
                     if (menuOpen) return@runOnUiThread
                     appendLog("AirPlay session active")
+                }
+            }
+
+            override fun onHostUiRequested(session: AirPlaySession) {
+                runOnUiThread {
+                    if (controllerGeneration != restartGeneration || shuttingDown.get()) return@runOnUiThread
+                    showAndroidPlayHome()
                 }
             }
 
@@ -695,6 +680,7 @@ class CarPlayHostActivity : ComponentActivity() {
                     if (menuOpen || controllerGeneration != restartGeneration) {
                         return@runOnUiThread
                     }
+                    if (retryLowerFrameRate()) return@runOnUiThread
                     activeScreenStreamTypes.clear()
                     setConnectionStage("CarPlay session ended; reconnecting")
                     appendLog("AirPlay session ended; reconnecting from scratch")
@@ -707,6 +693,7 @@ class CarPlayHostActivity : ComponentActivity() {
                     if (menuOpen || controllerGeneration != restartGeneration) {
                         return@runOnUiThread
                     }
+                    if (retryLowerFrameRate()) return@runOnUiThread
                     activeScreenStreamTypes.clear()
                     setConnectionStage("Transport error; reconnecting")
                     appendLog("CarPlay transport error: $message; reconnecting from scratch")
@@ -719,6 +706,9 @@ class CarPlayHostActivity : ComponentActivity() {
                 runOnUiThread {
                     if (controllerGeneration != restartGeneration) {
                         return@runOnUiThread
+                    }
+                    if (message.contains("iap2 tx=0x4301 carplay-start-session")) {
+                        armFrameRateFallback(controllerGeneration)
                     }
                     DisplayDiagnosticSnapshot.record(this@CarPlayHostActivity, displayDiagnosticAttempt, message)
                     if (menuOpen) return@runOnUiThread
@@ -743,6 +733,7 @@ class CarPlayHostActivity : ComponentActivity() {
                 } else {
                     wifiRecoveryButton?.visibility = View.GONE
                     appendLog(description)
+                    retryLowerFrameRate()
                     // Keep the actual failure visible instead of hiding it in an endless retry loop.
                 }
                 else -> Unit
@@ -800,6 +791,8 @@ class CarPlayHostActivity : ComponentActivity() {
         if (CarPlayBackgroundSession.hasSession() && !CarPlayBackgroundSession.isOwner(this)) return
         if (shuttingDown.get() || menuOpen || handshakeResetInProgress || controller != null) return
         loadPersistedSettings() // Refresh even when Android reuses the host Activity.
+        cancelFrameRateFallback()
+        frameRateGuard = CarPlayFrameRateFallback(fps)
         val controllerGeneration = restartGeneration
         val config = createRuntimeConfig()
         val airPlayConfig = createAirPlayConfig(size)
@@ -812,7 +805,6 @@ class CarPlayHostActivity : ComponentActivity() {
         appendLog(
             "Starting CarPlay controller at ${size.width}x${size.height} -> " +
                 "${airPlayConfig.main.widthPixels}x${airPlayConfig.main.heightPixels} " +
-                "(${CarPlayDisplayScale.label(displayScaleTenths)}) " +
                 "physical=${airPlayConfig.main.widthPhysicalMm}x" +
                 "${airPlayConfig.main.heightPhysicalMm}mm " +
                 "video=${if (airPlayConfig.hevc) "HEVC" else "H.264"} " +
@@ -825,7 +817,6 @@ class CarPlayHostActivity : ComponentActivity() {
             TAG,
             "starting controller display=${size.width}x${size.height} " +
                 "negotiated=${airPlayConfig.main.widthPixels}x${airPlayConfig.main.heightPixels} " +
-                "scale=${CarPlayDisplayScale.label(displayScaleTenths)} " +
                 "hevc=${airPlayConfig.hevc} " +
                 "softwareHevc=${airPlayConfig.hevc && hevcSoftwareDecoderEnabled} " +
                 "microphone=${airPlayConfig.microphone} " +
@@ -994,6 +985,7 @@ class CarPlayHostActivity : ComponentActivity() {
         activeScreenStreamTypes.clear()
         setConnectionStage(reason)
         Log.i(TAG, "$reason; rebuilding stack at ${size.width}x${size.height}")
+        cancelFrameRateFallback()
         val generation = ++restartGeneration
         handshakeResetInProgress = true
         val oldController = controller
@@ -1024,6 +1016,7 @@ class CarPlayHostActivity : ComponentActivity() {
 
     private fun shutdown(terminateProcess: Boolean, reason: String, completion: () -> Unit = {}) {
         if (!shuttingDown.compareAndSet(false, true)) { completion(); return }
+        cancelFrameRateFallback()
         restartGeneration += 1
         mainHandler.removeCallbacks(applyDisplaySize)
         val oldController = controller
@@ -1127,6 +1120,7 @@ class CarPlayHostActivity : ComponentActivity() {
         runOnUiThread {
             if (shuttingDown.get() || generation != restartGeneration) return@runOnUiThread
             if (active) {
+                if (type == SCREEN_TYPE_MAIN) cancelFrameRateFallback()
                 activeScreenStreamTypes.add(type)
             } else {
                 activeScreenStreamTypes.remove(type)

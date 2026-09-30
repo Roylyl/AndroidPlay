@@ -21,8 +21,8 @@ android {
         minSdk = 28
         // API36+ overrides landscape restrictions on large displays.
         targetSdk = 35
-        versionCode = 37
-        versionName = "1.0.0"
+        versionCode = 40
+        versionName = "1.0.1"
 
     }
 
