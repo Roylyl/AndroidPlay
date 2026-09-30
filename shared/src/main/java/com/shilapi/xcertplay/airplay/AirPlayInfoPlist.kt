@@ -167,6 +167,10 @@ object AirPlayInfoPlist {
             "primaryInputDevice" to display.primaryInputDevice,
         )
 
+        if (display.omitPhysicalSize) {
+            entry.remove("widthPhysical")
+            entry.remove("heightPhysical")
+        }
         entry["viewAreas"] = listOf(areaDict(display))
         entry["initialViewArea"] = 0
         if (display.initialUrl != null) entry["initialURL"] = display.initialUrl

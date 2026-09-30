@@ -1,6 +1,7 @@
 package com.shilapi.xcertplay.media
 
 import android.media.AudioFormat as AndroidAudioFormat
+import android.media.AudioDeviceInfo
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.util.Log
@@ -22,7 +23,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  * The recorder runs only while the matching audio stream is active, so callers start this after
  * the first downlink audio packet and close it on stream teardown.
  */
-internal class MicrophoneUplink(private val config: MicrophoneConfig) : Closeable {
+internal class MicrophoneUplink(private val config: MicrophoneConfig, @Volatile private var inputDevice: AudioDeviceInfo? = null) : Closeable {
+    @Synchronized fun setInputDevice(device: AudioDeviceInfo?) {
+        inputDevice = device
+        recorder?.let { if (!it.setPreferredDevice(device)) Log.w(TAG, "Microphone input device preference rejected") }
+    }
     private val running = AtomicBoolean(false)
     private val firstPacketLogged = AtomicBoolean(false)
     @Volatile private var recorder: AudioRecord? = null
@@ -104,7 +109,7 @@ internal class MicrophoneUplink(private val config: MicrophoneConfig) : Closeabl
             return false
         }
 
-        recorder = nextRecorder
+        synchronized(this) { recorder = nextRecorder; if (!nextRecorder.setPreferredDevice(inputDevice)) Log.w(TAG, "Microphone input device preference rejected") }
         socket = nextSocket
         opusEncoder = nextEncoder
         return try {

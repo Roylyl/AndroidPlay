@@ -40,6 +40,11 @@ secrets.properties
 *.apks
 *.xapk
 *.hprof
+*.heapdump
+*.pcap
+*.pcapng
+*.trace
+androidplay-diagnostics*.zip
 *.log
 /agent_docs/
 

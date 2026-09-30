@@ -24,6 +24,9 @@ class Iap2Session private constructor(
 ) : AutoCloseable {
     val isClosed: Boolean get() = channel.isClosed
 
+    fun setFileTransferListener(listener: ((ByteArray) -> Unit)?) = channel.setFileTransferListener(listener)
+    fun sendFileTransfer(bytes: ByteArray): Boolean = channel.sendFileTransfer(bytes)
+
     fun awaitReady(timeoutMillis: Long): Boolean {
         val ready = channel.awaitReady(timeoutMillis)
         emitTrace("IAP2 READY [$traceContext] ready=$ready")

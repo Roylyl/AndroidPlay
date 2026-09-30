@@ -9,10 +9,13 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
-/** Fill the physical display, including cutout edges, in either landscape direction. */
+/** Fill the physical display, including cutout edges, with orientation appropriate to the native UI or projection. */
 internal object AndroidPlayWindow {
     fun apply(activity: Activity) {
-        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        activity.requestedOrientation = if (activity is CarPlayHostActivity) {
+            if (CarPlaySettings.portrait(activity)) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
         val window = activity.window
         window.attributes = window.attributes.apply {
             layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= 30)

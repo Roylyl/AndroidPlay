@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application>
         <activity android:name="com.shilapi.xcertplay.AndroidPlayActivity"
             android:exported="true" android:launchMode="singleTop"
-            android:screenOrientation="sensorLandscape" android:resizeableActivity="false"
+            android:screenOrientation="fullSensor" android:resizeableActivity="false"
             android:configChanges="density|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
             android:theme="@style/Theme.AndroidPlay">
             <intent-filter>
@@ -21,6 +23,6 @@
             android:configChanges="density|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
             android:theme="@style/Theme.AndroidPlay" />
         <service android:name="com.shilapi.xcertplay.AndroidPlaySessionService"
-            android:exported="false" android:foregroundServiceType="connectedDevice|microphone" />
+            android:exported="false" android:foregroundServiceType="connectedDevice|microphone|mediaPlayback" />
     </application>
 </manifest>

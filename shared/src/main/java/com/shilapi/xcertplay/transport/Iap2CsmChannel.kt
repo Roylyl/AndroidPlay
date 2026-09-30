@@ -26,6 +26,9 @@ class Iap2CsmChannel private constructor(
     private var closed = false
     private var terminalFailure: Throwable? = null
 
+    fun setFileTransferListener(listener: ((ByteArray) -> Unit)?) { link.fileTransferListener = listener }
+    fun sendFileTransfer(bytes: ByteArray): Boolean = link.sendFileTransfer(bytes)
+
     /** True once this channel is closed or has recorded a terminal transport failure. */
     val isClosed: Boolean
         get() = synchronized(stateLock) {

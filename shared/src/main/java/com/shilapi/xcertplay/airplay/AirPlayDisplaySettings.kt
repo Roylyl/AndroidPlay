@@ -78,6 +78,17 @@ object AirPlayDisplaySettings {
         )
     }
 
+    /** Physical panel pixels and physical PPI only; never use densityDpi, dp, or UI scale. */
+    fun hardwarePhysicalSizeMm(widthPixels: Int, heightPixels: Int, xdpi: Float, ydpi: Float): AirPlayPhysicalSizeMm? {
+        if (widthPixels <= 0 || heightPixels <= 0 || !xdpi.isFinite() || !ydpi.isFinite() || xdpi <= 0 || ydpi <= 0) return null
+        val width = widthPixels.toDouble() / xdpi * 25.4
+        val height = heightPixels.toDouble() / ydpi * 25.4
+        if (width !in 1.0..2_000.0 || height !in 1.0..2_000.0) return null
+        val x = Math.round(width).toInt()
+        val y = Math.round(height).toInt()
+        return if (widthPixels >= heightPixels) AirPlayPhysicalSizeMm(x, y) else AirPlayPhysicalSizeMm(y, x)
+    }
+
     fun fpsProgress(value: Int): Int =
         (sanitizeFps(value) - MIN_FPS) / FPS_STEP
 

@@ -12,7 +12,7 @@ import kotlin.math.min
  * for readiness, queue complete session-10 payloads, receive session-10 payloads, or close this
  * channel.  This class owns and closes [underlying].
  *
- * It deliberately does not parse CSM control messages or implement EA, file transfer, media, UI,
+ * It deliberately does not parse CSM control messages or file-transfer payloads, media, UI,
  * or any Lockdown setup.
  */
 class Iap2LinkChannel private constructor(
@@ -20,7 +20,8 @@ class Iap2LinkChannel private constructor(
     private val linkConfig: Iap2LinkConfig,
     private val initiateNegotiation: Boolean,
 ) : AutoCloseable {
-    private data class Command(val control: ByteArray)
+    private data class Command(val control: ByteArray, val fileTransfer: Boolean = false)
+    @Volatile var fileTransferListener: ((ByteArray) -> Unit)? = null
 
     private val lock = Object()
     private val commands = ArrayDeque<Command>()
@@ -68,6 +69,14 @@ class Iap2LinkChannel private constructor(
         synchronized(lock) {
             if (terminated || closing) return false
             return enqueueCommandLocked(copy)
+        }
+    }
+
+    fun sendFileTransfer(bytes: ByteArray): Boolean {
+        require(bytes.size <= Iap2LinkEngine.MAX_PAYLOAD_BYTES)
+        synchronized(lock) {
+            if (terminated || closing) return false
+            return enqueueCommandLocked(bytes.copyOf(), fileTransfer = true)
         }
     }
 
@@ -185,7 +194,8 @@ class Iap2LinkChannel private constructor(
                     }
                 }
             } ?: return
-            engine.sendControl(command.control, nowMillis())
+            if (command.fileTransfer) engine.sendFileTransfer(command.control, nowMillis())
+            else engine.sendControl(command.control, nowMillis())
             if (isClosing()) return
         }
     }
@@ -226,6 +236,8 @@ class Iap2LinkChannel private constructor(
                         return false
                     }
                 }
+
+                is Iap2LinkEngine.Event.FileTransfer -> fileTransferListener?.invoke(event.bytes)
 
                 is Iap2LinkEngine.Event.Dead -> {
                     finish(IOException(event.reason ?: "iAP2 link ended"))
@@ -290,9 +302,9 @@ class Iap2LinkChannel private constructor(
         commands.size < MAX_PENDING_COMMANDS && bytes <= MAX_PENDING_COMMAND_BYTES - commandBytes
 
     /** lock must already be held. */
-    private fun enqueueCommandLocked(bytes: ByteArray): Boolean {
+    private fun enqueueCommandLocked(bytes: ByteArray, fileTransfer: Boolean = false): Boolean {
         if (!hasCommandCapacityLocked(bytes.size)) return false
-        commands += Command(bytes)
+        commands += Command(bytes, fileTransfer)
         commandBytes += bytes.size
         lock.notifyAll()
         return true

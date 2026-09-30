@@ -258,6 +258,7 @@ class Iap2IdentificationClient(private val session: Iap2Session) {
             0xaa03, // AuthenticationResponse
             0x5000, // StartNowPlayingUpdates
             0x5002, // StopNowPlayingUpdates
+            0x5003, // SetNowPlayingInfo (seek)
             0x5200, // StartRouteGuidanceUpdates
             0x5203, // StopRouteGuidanceUpdates
             0xae00, // StartPowerUpdates

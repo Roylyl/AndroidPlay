@@ -7,6 +7,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AirPlayInfoPlistTest {
+    @Test fun unavailableHardwareSizeNeverBecomesSynthetic200mmInInfoResponse() {
+        val info = AirPlayInfoPlist.build(AirPlayConfig(
+            deviceName = "test", deviceId = "02:00:00:00:00:02", btMac = "02:00:00:00:00:02", sourceVersion = "366.0",
+            main = AirPlayDisplayConfig(widthPixels = 2400, heightPixels = 1080, omitPhysicalSize = true),
+        ))
+        val display = (info["displays"] as List<*>).first() as Map<*, *>
+        assertEquals(2400, display["widthPixels"])
+        assertEquals(1080, display["heightPixels"])
+        assertFalse(display.containsKey("widthPhysical"))
+        assertFalse(display.containsKey("heightPhysical"))
+    }
+
     @Test
     fun defaultDisplayIncludesFullViewAndSafeAreas() {
         val info = AirPlayInfoPlist.build(

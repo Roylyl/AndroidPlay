@@ -22,18 +22,20 @@ class AndroidPlaySessionService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (!CarPlayBackgroundSession.hasSession()) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        if (intent?.action == ACTION_MEDIA) {
+            val code = intent.getIntExtra("media", 0)
+            if (code in listOf(1, 2, 4, 5)) CarPlayBackgroundSession.snapshot()?.controller?.sendMedia(code)
+        }
+        running = true
         val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel(CHANNEL, "系统热点CarPlay连接", NotificationManager.IMPORTANCE_LOW))
-        val open = PendingIntent.getActivity(this, 0, Intent(this, CarPlayHostActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val stop = PendingIntent.getService(this, 1, Intent(this, AndroidPlaySessionService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val notification = Notification.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_androidplay_notification)
-            .setContentTitle("AndroidPlay")
-            .setContentText("CarPlay热点连接服务正在运行")
-            .setContentIntent(open).setOngoing(true)
-            .addAction(Notification.Action.Builder(null, "断开连接", stop).build()).build()
+        manager.createNotificationChannel(NotificationChannel(CHANNEL, "CarPlay连接与播放", NotificationManager.IMPORTANCE_LOW))
+        val notification = buildNotification(this)
         if (Build.VERSION.SDK_INT >= 29) {
-            var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
             if (Build.VERSION.SDK_INT >= 30 && checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                 types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             }
@@ -41,12 +43,28 @@ class AndroidPlaySessionService : Service() {
         } else startForeground(1, notification)
         return START_NOT_STICKY
     }
+    override fun onDestroy() { running = false; super.onDestroy() }
     override fun onTaskRemoved(rootIntent: Intent?) {
         // BYD's recents force-stops the package ~10 ms after removing the task: end guidance first.
         CarPlayBackgroundSession.stop()
         stopSelf()
     }
     companion object {
+        @Volatile private var running = false
+        const val ACTION_MEDIA = "com.androidplay.app.MEDIA"
+        fun refreshNotification(context: android.content.Context) {
+            if (running) context.getSystemService(NotificationManager::class.java).notify(1, buildNotification(context))
+        }
+        private fun buildNotification(context: android.content.Context): Notification {
+            val open = PendingIntent.getActivity(context, 0, Intent(context, CarPlayHostActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val stop = PendingIntent.getService(context, 1, Intent(context, AndroidPlaySessionService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val builder = Notification.Builder(context, CHANNEL)
+                .setSmallIcon(R.drawable.ic_androidplay_notification)
+                .setContentTitle("AndroidPlay").setContentText("CarPlay连接服务正在运行")
+                .setContentIntent(open).setOngoing(true)
+            CarPlayBackgroundSession.decorateNotification(builder)
+            return builder.addAction(Notification.Action.Builder(null, "断开连接", stop).build()).build()
+        }
         const val ACTION_STOP = "com.androidplay.app.DISCONNECT"
         private const val CHANNEL = "androidplay_connection"
     }

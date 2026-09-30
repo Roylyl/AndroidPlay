@@ -28,6 +28,7 @@ class Iap2LinkEngine(
 
     sealed class Event {
         data class Control(val bytes: ByteArray) : Event()
+        data class FileTransfer(val bytes: ByteArray) : Event()
         data class Writable(val value: Boolean) : Event()
         data class Dead(val reason: String?) : Event()
     }
@@ -241,7 +242,11 @@ class Iap2LinkEngine(
     }
 
     /** Queues a complete raw control-session payload (session id 10). */
-    fun sendControl(bytes: ByteArray, nowMillis: Long) {
+    fun sendControl(bytes: ByteArray, nowMillis: Long) = sendSession(CONTROL_SESSION_ID, bytes, nowMillis)
+
+    fun sendFileTransfer(bytes: ByteArray, nowMillis: Long) = sendSession(FILE_TRANSFER_SESSION_ID, bytes, nowMillis)
+
+    private fun sendSession(sessionId: Int, bytes: ByteArray, nowMillis: Long) {
         require(bytes.size <= MAX_PAYLOAD_BYTES) {
             "iAP2 control payload exceeds $MAX_PAYLOAD_BYTES bytes"
         }
@@ -250,7 +255,7 @@ class Iap2LinkEngine(
                 "iAP2 control payload exceeds peer maxLength ${peerSynchronization.maxLength}"
             }
         }
-        sendPacket(Packet(0, CONTROL_SESSION_ID, bytes.copyOf()), nowMillis)
+        sendPacket(Packet(0, sessionId, bytes.copyOf()), nowMillis)
     }
 
     private fun parseAvailable(nowMillis: Long): Boolean {
@@ -427,7 +432,10 @@ class Iap2LinkEngine(
         while (outOfOrder.isNotEmpty() && sequenceDistance(outOfOrder.first().sequence, lastReceivedInOrder) == 1) {
             val inOrder = outOfOrder.removeAt(0)
             lastReceivedInOrder = inOrder.sequence
-            if (inOrder.sessionId == CONTROL_SESSION_ID) enqueueEvent(Event.Control(inOrder.payload))
+            when (inOrder.sessionId) {
+                CONTROL_SESSION_ID -> enqueueEvent(Event.Control(inOrder.payload))
+                FILE_TRANSFER_SESSION_ID -> enqueueEvent(Event.FileTransfer(inOrder.payload))
+            }
         }
 
         if (peerSynchronization.maxAcknowledgements == 0) return

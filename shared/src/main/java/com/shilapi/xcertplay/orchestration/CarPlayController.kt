@@ -292,6 +292,7 @@ class CarPlayController(
         reportStatus: (CarPlayStatus) -> Unit,
     ) {
         uiListener = listener
+        listener.onNowPlaying(nowPlaying.snapshot())
         uiStatusReporter = reportStatus
         mainHandler.post {
             if (uiListener === listener) lastReportedStatus?.let(reportStatus)
@@ -368,6 +369,7 @@ class CarPlayController(
             if (closed) return
             closed = true
         }
+        nowPlaying.clear()
         closeReceivers()
         availabilityPollGeneration.incrementAndGet()
         wirelessGeneration.incrementAndGet()
@@ -424,7 +426,53 @@ class CarPlayController(
     }
 
     // Navigation frames remain part of CarPlay; this build has no external HUD output.
+    private val nowPlaying = com.shilapi.xcertplay.media.CarPlayNowPlayingStore(android.os.SystemClock::elapsedRealtime)
+
     private fun onRouteFrame(frame: com.shilapi.xcertplay.iap2.wire.Iap2Frame) {
+        if (closed) return
+        try {
+            nowPlaying.update(frame)?.let { uiListener?.onNowPlaying(it) }
+        } catch (error: Exception) { debugLog("Invalid now-playing update", error) }
+    }
+
+    private fun attachArtwork(channel: Iap2Session) {
+        channel.setFileTransferListener { bytes ->
+            if (!closed) {
+                val (reply, value) = nowPlaying.fileTransfer(bytes, channel)
+                reply?.let { if (!channel.sendFileTransfer(it)) debugLog("Artwork acknowledgement queue unavailable") }
+                value?.let { uiListener?.onNowPlaying(it) }
+            }
+        }
+    }
+
+    fun setNightMode(night: Boolean) {
+        val session = activeSession ?: return
+        if (closed) return
+        try { touchExecutor.execute { if (!closed && activeSession === session) session.setNightMode(night) } }
+        catch (_: java.util.concurrent.RejectedExecutionException) { }
+    }
+
+    fun sendMedia(index: Int) {
+        val session = activeSession ?: return
+        if (closed) return
+        try { touchExecutor.execute { if (!closed && activeSession === session) session.sendMedia(index) } }
+        catch (_: java.util.concurrent.RejectedExecutionException) { }
+    }
+
+    fun seekTo(positionMillis: Long) {
+        val value = nowPlaying.snapshot()
+        val channel = wirelessTunnelChannel?.takeUnless { it.isClosed } ?: csm?.takeUnless { it.isClosed } ?: return
+        if (closed || !value.canSeek || value.durationMillis <= 0) return
+        val position = positionMillis.coerceIn(0, minOf(value.durationMillis, 0xffffffffL))
+        try {
+            touchExecutor.execute {
+                if (closed || nowPlaying.snapshot().trackRevision != value.trackRevision) return@execute
+                try {
+                    channel.sendRaw(0x5003) { u32(0, position) }
+                    uiListener?.onNowPlaying(nowPlaying.seek(position))
+                } catch (error: Exception) { debugLog("Could not send playback seek", error) }
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) { }
     }
 
     private fun startMfi() {
@@ -947,7 +995,7 @@ class CarPlayController(
                 stream,
                 traceContext = "wireless-rfcomm",
                 onTrace = ::debugLog,
-            ).also { csm = it }
+            ).also { csm = it; attachArtwork(it) }
             debugLog("wireless iAP2 CSM channel opened over RFCOMM")
             if (isStaleWirelessRun(generation)) {
                 closeWirelessStack()
@@ -1036,6 +1084,7 @@ class CarPlayController(
             debugLog("Could not open the tunneled iAP2 link", error)
             return false
         }
+        attachArtwork(channel)
         wirelessTunnelChannel = channel
         val generation = wirelessGeneration.get()
         debugLog("wireless iAP2 tunnel control starting")
@@ -1472,6 +1521,7 @@ class CarPlayController(
                 traceContext = "wired",
                 onTrace = ::debugLog,
             )
+            attachArtwork(csm)
             this.csm = csm
             debugLog("wired iAP2 CSM channel opened")
 

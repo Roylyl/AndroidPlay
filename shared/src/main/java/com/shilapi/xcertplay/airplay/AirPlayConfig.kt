@@ -14,6 +14,8 @@ data class AirPlayDisplayConfig(
     val heightPixels: Int,
     val widthPhysicalMm: Int? = null,
     val heightPhysicalMm: Int? = null,
+    /** Hardware size unavailable: do not substitute the legacy synthetic 200mm default. */
+    val omitPhysicalSize: Boolean = false,
     val fps: Int = 60,
     val primaryInputDevice: Int = 1,
     val viewArea: AirPlayInsets? = null,

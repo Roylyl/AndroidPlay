@@ -6,11 +6,14 @@ import android.util.Log
 internal class VideoStats(
     private val label: String = "",
     private val nanoTime: () -> Long = System::nanoTime,
+    private val onMeasuredFps: (Double) -> Unit = {},
 ) {
     private var windowStartNs = nanoTime()
     private var lastArrivalNs = 0L
     private var received = 0
     private var rendered = 0
+    private var sampleStartNs = 0L
+    private var sampleFrames = 0
     private var recoveries = 0
     private var bytes = 0L
     private var maxArrivalGapNs = 0L
@@ -20,6 +23,7 @@ internal class VideoStats(
 
     @Synchronized fun onReceived(size: Int) {
         val now = nanoTime()
+        if (lastArrivalNs == 0L) windowStartNs = now
         val gap = now - lastArrivalNs
         if (lastArrivalNs != 0L && gap < IDLE_GAP_NS) maxArrivalGapNs = maxOf(maxArrivalGapNs, gap)
         lastArrivalNs = now
@@ -34,7 +38,18 @@ internal class VideoStats(
         bytes += size
     }
 
-    @Synchronized fun onRendered() { rendered++ }
+    @Synchronized fun onRendered() {
+        rendered++
+        val now = nanoTime()
+        if (sampleStartNs == 0L) { sampleStartNs = now; sampleFrames = 0; return }
+        sampleFrames++
+        val elapsed = now - sampleStartNs
+        if (elapsed >= 1_000_000_000L) {
+            onMeasuredFps(sampleFrames * 1e9 / elapsed)
+            sampleStartNs = now
+            sampleFrames = 0
+        }
+    }
 
     @Synchronized fun onRecovery() { recoveries++ }
 

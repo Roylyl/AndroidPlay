@@ -278,10 +278,10 @@ object Iap2ControlMessages {
     fun subscriptions(): List<Iap2Frame> = listOf(
         Iap2Messages.build(Iap2Endpoints.START_NOW_PLAYING_UPDATES) {
             group(0) {
-                listOf(1, 4, 6, 12, 26).forEach(::void)
+                listOf(0, 1, 4, 6, 12, 26).forEach(::void)
             }
             group(1) {
-                listOf(0, 1, 7).forEach(::void)
+                listOf(0, 1, 2, 7, 12, 13, 16).forEach(::void)
             }
         },
         Iap2Messages.build(Iap2Endpoints.START_ROUTE_GUIDANCE_UPDATES) {

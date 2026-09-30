@@ -1,5 +1,6 @@
 package com.shilapi.xcertplay.media
 
+import android.media.AudioDeviceInfo
 import android.media.AudioAttributes
 import android.media.AudioFormat as AndroidAudioFormat
 import android.media.AudioTrack
@@ -37,9 +38,20 @@ class AndroidMediaSink(
     private val preferSoftwareHevcDecoder: Boolean = false,
     private val advancedAudioChannelMapping: Boolean = false,
     onScreenStreamActiveChanged: ((Int, Boolean) -> Unit)? = null,
+    onVideoParameters: ((Int, Int, Int, Double) -> Unit)? = null,
     private val mediaBufferMillis: Int = MediaAudioBuffer.DEFAULT_MILLIS,
     private val onAudioDiagnostic: (String) -> Unit = {},
 ) : MediaSink {
+    @Volatile private var preferredInput: AudioDeviceInfo? = null
+    @Volatile private var preferredOutput: AudioDeviceInfo? = null
+    @Synchronized fun setAudioDevices(input: AudioDeviceInfo?, output: AudioDeviceInfo?) {
+        preferredInput = input
+        preferredOutput = output
+        audioRenderers.values.forEach { it.setOutputDevice(output) }
+        microphoneUplinks.values.forEach { it.setInputDevice(input) }
+    }
+    @Volatile private var videoParametersListener = onVideoParameters
+    fun setVideoParametersListener(listener: ((Int, Int, Int, Double) -> Unit)?) { videoParametersListener = listener }
     private val screenStateLock = Any()
     private val activeScreenTypes = mutableSetOf<Int>()
     private val defaultSurface = surface
@@ -130,7 +142,7 @@ class AndroidMediaSink(
     }
 
     override fun onMicrophoneStarted(type: Int, config: MicrophoneConfig) {
-        val uplink = microphoneUplinks.computeIfAbsent(type) { MicrophoneUplink(config) }
+        val uplink = microphoneUplinks.computeIfAbsent(type) { MicrophoneUplink(config, preferredInput) }
         if (!uplink.start()) microphoneUplinks.remove(type, uplink)
     }
 
@@ -165,6 +177,7 @@ class AndroidMediaSink(
                 preferSoftwareHevcDecoder,
                 requestKeyFrame = { requestVideoRecovery(type) },
                 report = { videoDiagnosticHandlers[type]?.invoke(it) },
+                onParameters = { width, height, fps -> videoParametersListener?.invoke(type, width, height, fps) },
             )
         }
 
@@ -173,7 +186,7 @@ class AndroidMediaSink(
         val existing = audioRenderers[type]
         if (existing?.format == format) return existing
         existing?.close()
-        return AudioRenderer(format, advancedAudioChannelMapping, mediaBufferMillis, onAudioDiagnostic).also { audioRenderers[type] = it }
+        return AudioRenderer(format, advancedAudioChannelMapping, mediaBufferMillis, onAudioDiagnostic, preferredOutput).also { audioRenderers[type] = it }
     }
 }
 
@@ -186,6 +199,7 @@ private class VideoDecoder(
     private val preferSoftwareHevcDecoder: Boolean,
     private val requestKeyFrame: () -> Unit,
     private val report: (String) -> Unit,
+    private val onParameters: (Int, Int, Double) -> Unit,
 ) : Closeable {
     private val queue = VideoDecodeQueue()
     @Volatile private var running = true
@@ -198,7 +212,17 @@ private class VideoDecoder(
     private val referenceChain = VideoReferenceChain()
     private var lastKeyFrameRequestNs = 0L
     // The main screen keeps the historical log format; other screens are labelled.
-    private val stats = VideoStats(if (streamType == 110) "" else " stream=$streamType")
+    private var peakOutputFps = 0.0
+    private var actualWidth = 0
+    private var actualHeight = 0
+    private val stats = VideoStats(if (streamType == 110) "" else " stream=$streamType", onMeasuredFps = { fps ->
+        peakOutputFps = maxOf(peakOutputFps, fps)
+        // Static screens cannot establish a nominal frame-rate tier.
+        if (actualWidth > 0 && actualHeight > 0 && peakOutputFps >= 20.0) {
+            val tier = listOf(30, 60, 90, 120).minByOrNull { kotlin.math.abs(it - peakOutputFps) }!!
+            onParameters(actualWidth, actualHeight, tier.toDouble())
+        }
+    })
     private val thread = Thread(::run, "carplay-video").apply { isDaemon = true; start() }
 
     fun configure(codec: VideoCodec, codecData: ByteArray) {
@@ -436,6 +460,10 @@ private class VideoDecoder(
     }
 
     private fun logOutputFormat(format: MediaFormat) {
+        val codedWidth = format.intOrNull(MediaFormat.KEY_WIDTH) ?: 0
+        val codedHeight = format.intOrNull(MediaFormat.KEY_HEIGHT) ?: 0
+        actualWidth = if (format.containsKey("crop-left") && format.containsKey("crop-right")) format.getInteger("crop-right") - format.getInteger("crop-left") + 1 else codedWidth
+        actualHeight = if (format.containsKey("crop-top") && format.containsKey("crop-bottom")) format.getInteger("crop-bottom") - format.getInteger("crop-top") + 1 else codedHeight
         report("output format requested=${width}x${height} " +
             "coded=${format.intOrNull(MediaFormat.KEY_WIDTH)}x${format.intOrNull(MediaFormat.KEY_HEIGHT)} " +
             "crop=${format.intOrNull("crop-left")},${format.intOrNull("crop-top")}," +
@@ -499,6 +527,7 @@ private class AudioRenderer(
     private val advancedAudioChannelMapping: Boolean,
     private val mediaBufferMillis: Int,
     private val report: (String) -> Unit,
+    @Volatile private var outputDevice: AudioDeviceInfo?,
 ) : Closeable {
     private data class AudioPacket(val rtp: ByteArray, val sample: Int)
 
@@ -506,7 +535,11 @@ private class AudioRenderer(
     @Volatile private var running = true
     @Volatile private var started = false
     private var codec: MediaCodec? = null
-    private var track: AudioTrack? = null
+    @Volatile private var track: AudioTrack? = null
+    @Synchronized fun setOutputDevice(device: AudioDeviceInfo?) {
+        outputDevice = device
+        track?.let { current -> runCatching { current.setPreferredDevice(device) }.onSuccess { if (!it) report("Audio: output device preference rejected") }.onFailure { report("Audio: output route unavailable") } }
+    }
     private var pcm = ByteArray(64 * 1024)
     private var playbackStarted = false
     private var prebufferBytes = 0
@@ -649,7 +682,7 @@ private class AudioRenderer(
             .setBufferSizeInBytes(plan.trackBufferBytes)
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
-        track = built
+        synchronized(this) { track = built; if (!built.setPreferredDevice(outputDevice)) report("Audio: output device preference rejected") }
         val capacityBytes = built.bufferSizeInFrames * frameBytes
         startThresholdBytes = MediaAudioBuffer.startBytesFor(plan.startBytes, capacityBytes, PREBUFFER_WRITE_CHUNK_BYTES)
         report("Audio: ready audioType=${format.audioType} codec=${format.codec} " +
@@ -703,7 +736,7 @@ private class AudioRenderer(
         AudioChannel.MEDIA -> AudioAttributes.USAGE_MEDIA
         AudioChannel.PHONE -> AudioAttributes.USAGE_VOICE_COMMUNICATION
         AudioChannel.ASSISTANT -> AudioAttributes.USAGE_ASSISTANT
-        AudioChannel.NAVIGATION -> AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE
+        AudioChannel.NAVIGATION -> AudioAttributes.USAGE_MEDIA
     }
 
     private fun contentTypeFor(contentType: AudioContentType): Int = when (contentType) {
