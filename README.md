@@ -24,6 +24,8 @@ AndroidPlay安装在Android手机或车机上，由iPhone提供CarPlay界面。�
 
 已在一组真实设备上完成iPhone投屏验证。1.0.1已移除缩放功能。项目仍使用实验性CarPlay认证身份；源码不包含认证文件，构建前需要单独配置。本文不提供已核实的AndroidPlay公开Release下载入口。
 
+**公开源码不能在缺少认证材料时直接构建出可连接CarPlay的应用**。认证材料需要构建者自行提供，正常构建会将其打入APK；接收该APK的安装用户无需再导入证书。CI生成的无认证APK仅用于源码检查，不能用于CarPlay连接。
+
 ## 主要功能
 
 - **中文操作界面**：首页、连接设置、设备选择及状态提示使用中文；CarPlay内的内容与语言由iPhone决定。
@@ -114,6 +116,8 @@ AndroidPlay安装在Android手机或车机上，由iPhone提供CarPlay界面。�
 
 ### 配置认证资源
 
+源码仓库不提供认证证书或私钥，也不会自动下载或生成可被iPhone接受的配件身份。构建可连接CarPlay的APK前，需要自行取得有权使用且互相匹配的认证文件。APK签名证书不能代替这些文件。
+
 认证文件放在源码目录之外，结构如下：
 
 ```text
@@ -124,6 +128,15 @@ runtime-assets/
 ```
 
 将环境变量`ANDROIDPLAY_AUTH_ASSETS_DIR`设为实际`runtime-assets`目录的绝对路径。macOS未设置该变量时，默认读取当前用户的`Library/Application Support/AndroidPlay/runtime-assets`目录。
+
+例如将资源放在用户目录下的`AndroidPlay-runtime-assets`，在macOS/Linux终端中执行：
+
+```sh
+export ANDROIDPLAY_AUTH_ASSETS_DIR="$HOME/AndroidPlay-runtime-assets"
+./scripts/build-androidplay.sh
+```
+
+该路径是包含`offline-mfi`子目录的资源根目录，不是`offline-mfi`目录本身。Windows构建者需设置同名环境变量，并在工程根目录使用`gradlew.bat :mobile:assembleStandaloneDebug`。Android Studio需能读取同一环境变量；macOS也可使用上面的默认目录。
 
 正常打包时，认证文件缺失或为空时构建会失败；Android Studio的Run与命令行构建使用同一资源配置。APK应用签名密钥与CarPlay配件认证身份用途不同，不能互相替代。认证来源及已有检查见[认证来源说明](docs/ANDROIDPLAY_AUTH_SOURCE.md)。
 
@@ -143,9 +156,17 @@ runtime-assets/
 
 直接构建的产物为`mobile/build/outputs/apk/debug/mobile-debug.apk`。以上均为调试签名APK；使用不同签名重新构建时，无法直接覆盖原安装。APK和认证私钥不纳入源码版本管理。
 
+**正常构建会把认证文件打入APK**。应用启动时自动读取这些资源，安装用户不需要手动导入，但仍需完成权限、热点和蓝牙配对。不要把“源码中不包含认证材料”理解为“构建出的APK也不包含”；公开上传APK前，应确认所用材料允许相应分发。上游曾公开提供材料这一事实，不等于已经确认其可由本项目重新分发。
+
 ### GitHub源码检查
 
-CI显式使用`-Pandroidplay.sourceOnly=true`运行测试、lint和调试构建。该模式不接入本机外部认证目录，生成的APK不具备CarPlay认证能力，仅用于源码检查，不作为发行安装包。普通本地构建仍要求认证文件；`assembleStandaloneDebug`不允许使用无认证模式。
+CI显式使用`-Pandroidplay.sourceOnly=true`运行测试、lint和调试构建。该模式不接入本机外部认证目录，生成的APK不具备CarPlay认证能力，仅用于源码检查，不作为发行安装包。需要仅检查源码时，可在工程根目录执行：
+
+```sh
+./gradlew -Pandroidplay.sourceOnly=true :mobile:assembleDebug
+```
+
+产物仍为`mobile/build/outputs/apk/debug/mobile-debug.apk`，但没有认证材料，不能完成CarPlay连接。普通本地构建仍要求认证文件；`assembleStandaloneDebug`不允许使用无认证模式。
 
 ### 工程结构
 
