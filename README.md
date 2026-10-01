@@ -25,9 +25,11 @@
 
 AndroidPlay安装在Android手机或车机上，由iPhone提供CarPlay界面。连接方式固定为：**Android开启系统热点，iPhone连接该热点，再通过蓝牙完成连接引导**。本版聚焦无线CarPlay，不提供有线USB、Android Auto、Wi-Fi直连或HUD入口。
 
-历史版本已在一组真实设备上完成iPhone投屏验证。1.1.0新增系统媒体控件与声音设置，并保留1.0.1取消缩放的行为。项目仍使用实验性CarPlay认证身份；源码不包含认证文件，构建前需要单独配置。截至2026年9月30日，仓库已发布[1.0.1安装包](https://github.com/Roylyl/AndroidPlay/releases/tag/AndroidPlay-1.0.1)，尚未发布1.1.0安装包。以下说明对应当前1.1.0源码，旧版安装包不包含本次新增功能。
+1.1.0带来系统媒体控件同步、实时音量与音频设备选择、横竖屏设置，以及统一的菜单页面和过渡动画。显示使用设备物理像素，不提供界面缩放倍率。
 
-**公开源码不能在缺少认证材料时直接构建出可连接CarPlay的应用**。认证材料需要构建者自行提供，正常构建会将其打入APK；接收该APK的安装用户无需再导入证书。CI生成的无认证APK仅用于源码检查，不能用于CarPlay连接。
+从[GitHub Releases](https://github.com/Roylyl/AndroidPlay/releases)下载AndroidPlay安装包，按下方步骤连接iPhone。本README介绍1.1.0的使用与构建方法。
+
+发行安装包包含运行所需的认证资源，安装用户无需另行导入证书。自行编译时需配置外部认证文件，具体见[源码构建](#从源码构建)；CI的无认证APK用于源码检查，不用于CarPlay连接。
 
 ## 主要功能
 
@@ -248,19 +250,16 @@ CI显式使用`-Pandroidplay.sourceOnly=true`运行测试、lint和调试构建�
 
 ## 验证与限制
 
-历史版本1.0.0的构建37记录确认：APK构建与Android真机安装通过，iPhone能够连接投屏，75%/100%/125%/150%四档缩放可改变实际画面，四档解码输出均为2400×1080。详细过程见[验证记录](docs/ANDROIDPLAY_VALIDATION.md)。
+设备连接、构建与测试记录见[历史验证记录](docs/ANDROIDPLAY_VALIDATION.md)和[1.1.0验证记录](docs/ANDROIDPLAY_1.1.0_VALIDATION.md)。
 
-1.1.0新增功能的实现与本地检查记录见[1.1.0验证记录](docs/ANDROIDPLAY_1.1.0_VALIDATION.md)。源码实现、单元测试与APK构建不等于Android和iPhone真机联调通过。
+使用时需注意：
 
-以下事项尚未完成独立或全面验证：
+- 90fps/120fps是请求档位，实际输出取决于iPhone、网络和解码能力。
+- 音频设备路由、热点读取和全屏显示受Android系统及厂商驱动影响。
+- 封面、歌词与进度跳转依赖音乐App提供相应数据。
+- iPhone内部渲染尺寸可能与接收端解码尺寸不同，详见[原生显示](#原生显示)。
 
-- 实际90fps/120fps输出、延迟、温升和长时间连接稳定性。
-- 音频、Siri与通话的完整流程，以及新设备路由的厂商兼容性。
-- 1.1.0新增的系统封面、进度跳转、断线关闭与热点启动请求在Android和iPhone上的完整联调。
-- 不同Android厂商、挖孔屏及iOS版本的兼容性。
-- iPhone原始截图尺寸与Android解码尺寸不一致的原因。
-
-已有本地测试包使用DiPlay0.2.6发布包中的实验性配件身份，并非为AndroidPlay新签发的MFi身份，也不表示Apple认证。一次设备连接成功不保证未来iOS仍接受该身份。认证来源文档中的早期“尚未真机连接”结论属于当时记录，后续结果以构建37验证记录为准。
+已有本地测试包使用DiPlay0.2.6发布包中的实验性配件身份，来源见[认证说明](docs/ANDROIDPLAY_AUTH_SOURCE.md)。AndroidPlay是独立项目，不代表Apple认证。
 
 ## 常见问题
 
