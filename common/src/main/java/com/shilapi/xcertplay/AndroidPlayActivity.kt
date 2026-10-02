@@ -32,8 +32,16 @@ import com.shilapi.xcertplay.orchestration.ManualHotspotBand
 import com.shilapi.xcertplay.orchestration.ManualHotspotSecurity
 import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
 
-/** A single-purpose, Chinese wireless CarPlay receiver. */
+/** Wireless CarPlay receiver with an app-owned language preference. */
 class AndroidPlayActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(AndroidPlayLanguage.context(newBase))
+    }
+    private fun tr(value: String) = AndroidPlayLanguage.text(this, value)
+    private val updates by lazy { AndroidPlayUpdates(this) }
+    private val logDestination = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        if (uri != null) updates.export(uri) { if (!isDestroyed) { render(); toast(updates.exportStatus) } }
+    }
     private val handler = Handler(Looper.getMainLooper())
     private var status: TextView? = null
     private var connectButton: Button? = null
@@ -54,11 +62,11 @@ class AndroidPlayActivity : ComponentActivity() {
             when (AndroidPlayHotspot.isEnabled(this)) {
                 true -> { hotspotConfirmed = true; connect() }
                 false -> requestHotspotSettings()
-                null -> dialogBuilder().setTitle("确认热点已开启")
-                    .setMessage("系统未提供热点状态。请确认本机移动热点已开启，并让iPhone连接该热点。")
-                    .setPositiveButton("已开启，继续") { _, _ -> hotspotConfirmed = true; connect() }
-                    .setNeutralButton("热点设置") { _, _ -> launchHotspotSettingsForConnection() }
-                    .setNegativeButton("取消", null).show()
+                null -> dialogBuilder().setTitle(tr("确认热点已开启"))
+                    .setMessage(tr("系统未提供热点状态。请确认本机移动热点已开启，并让iPhone连接该热点。"))
+                    .setPositiveButton(tr("已开启，继续")) { _, _ -> hotspotConfirmed = true; connect() }
+                    .setNeutralButton(tr("热点设置")) { _, _ -> launchHotspotSettingsForConnection() }
+                    .setNegativeButton(tr("取消"), null).show()
             }
         }
     }
@@ -72,7 +80,7 @@ class AndroidPlayActivity : ComponentActivity() {
         }
     }
     private val tick = object : Runnable {
-        override fun run() { refreshStatus(); handler.postDelayed(this, 1500) }
+        override fun run() { refreshStatus(); AndroidPlayHotspot.warnIfConcurrent(this@AndroidPlayActivity); handler.postDelayed(this, 1500) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -95,7 +103,7 @@ class AndroidPlayActivity : ComponentActivity() {
         AirPlayPersistence.saveHideTopBar(this, true)
         AirPlayPersistence.saveHideBottomBar(this, true)
         setupError = runCatching { AndroidPlayBootstrap.ensure(this) }.exceptionOrNull()?.let {
-            "CarPlay认证加载失败：${it.javaClass.simpleName}：${it.message ?: "未知原因"}"
+            "CarPlay认证加载失败：${it.javaClass.simpleName}：${it.message ?: tr("未知原因")}"
         }
         render()
         // Request every runtime permission used by this wireless-only app at startup.
@@ -122,6 +130,7 @@ class AndroidPlayActivity : ComponentActivity() {
         render()
         handler.removeCallbacks(tick)
         handler.post(tick)
+        checkUpdates(automatic = true)
     }
     override fun onPause() { handler.removeCallbacks(tick); super.onPause() }
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -133,6 +142,40 @@ class AndroidPlayActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) AndroidPlayWindow.apply(this)
+    }
+
+    private fun openUpdateLink(url: String) {
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            .onFailure { toast("无法打开链接") }
+    }
+    private fun checkUpdates(automatic: Boolean = false) {
+        val owner = java.lang.ref.WeakReference(this)
+        updates.check(automatic) {
+            val activity = owner.get() ?: return@check
+            if (activity.isDestroyed) return@check
+            if (activity.page == "about") activity.render()
+            val release = activity.updates.release ?: return@check
+            if (automatic && (!activity.updates.automatic || !activity.updates.shouldNotify())) return@check
+            if (automatic && (Build.VERSION.SDK_INT < 33 || activity.granted(Manifest.permission.POST_NOTIFICATIONS))) {
+                val manager = activity.getSystemService(android.app.NotificationManager::class.java)
+                manager.createNotificationChannel(android.app.NotificationChannel("androidplay_updates", activity.tr("软件更新"), android.app.NotificationManager.IMPORTANCE_DEFAULT))
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(release.installer ?: release.page))
+                val pending = android.app.PendingIntent.getActivity(activity, 120, intent, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
+                manager.notify(120, android.app.Notification.Builder(activity, "androidplay_updates")
+                    .setSmallIcon(R.drawable.ic_androidplay_notification)
+                    .setContentTitle(activity.tr("发现新版本") + " AndroidPlay " + release.version)
+                    .setContentText(activity.tr("点击下载更新，安装由你确认。"))
+                    .setContentIntent(pending).setAutoCancel(true).build())
+                activity.updates.markNotified()
+            } else if (activity.hasWindowFocus() && !activity.requestingPermissions) {
+                activity.dialogBuilder().setTitle(activity.tr("发现新版本"))
+                    .setMessage("AndroidPlay ${release.version}")
+                    .setPositiveButton(activity.tr("下载更新")) { _, _ -> activity.openUpdateLink(release.installer ?: release.page) }
+                    .setNegativeButton(activity.tr("稍后"), null).show()
+                activity.updates.markNotified()
+            }
+        }
+        if (page == "about") render()
     }
 
     private fun connectionPermissions() = buildList {
@@ -166,7 +209,7 @@ class AndroidPlayActivity : ComponentActivity() {
             content.setPadding(dp(32) + cutout.left, dp(20) + cutout.top, dp(32) + cutout.right, dp(28) + cutout.bottom)
             insets
         }
-        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; isBaselineAligned = false }
         header.addView(ImageView(this).apply {
             setImageResource(R.drawable.ic_androidplay)
             contentDescription = "AndroidPlay"
@@ -230,14 +273,14 @@ class AndroidPlayActivity : ComponentActivity() {
     }
     private fun refreshStatus() {
         val running = CarPlayBackgroundSession.hasSession()
-        status?.text = when {
+        status?.text = tr(when {
             CarPlayBackgroundSession.active -> "CarPlay已连接"
             running -> CarPlayBackgroundSession.connectionStatus
             !connectionPermissions().all(::granted) -> "需要连接权限"
             setupError != null -> "需要CarPlay认证文件"
             else -> "准备连接"
-        }
-        connectButton?.text = "打开CarPlay"
+        })
+        connectButton?.text = tr("打开CarPlay")
     }
     private fun connect() {
         if (!connectionPermissions().all(::granted)) {
@@ -273,7 +316,7 @@ class AndroidPlayActivity : ComponentActivity() {
         AirPlayPersistence.saveWirelessEnabled(this, true)
         hotspotConfirmed = false
         CarPlayBackgroundSession.actualVideoParameters?.let { text ->
-            Toast.makeText(this, text, Toast.LENGTH_SHORT)
+            Toast.makeText(this, tr(text), Toast.LENGTH_SHORT)
                 .apply { setGravity(Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, 0, dp(48)) }.show()
         }
         startActivity(Intent(this, CarPlayHostActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
@@ -317,10 +360,10 @@ class AndroidPlayActivity : ComponentActivity() {
         connectWithHotspot()
     }
     private fun requestHotspotSettings() {
-        dialogBuilder().setTitle("开启移动热点")
-            .setMessage("请在系统设置中开启本机WPA2移动热点，并让iPhone连接该热点。返回后继续连接CarPlay。")
-            .setPositiveButton("打开热点设置") { _, _ -> launchHotspotSettingsForConnection() }
-            .setNegativeButton("取消", null).show()
+        dialogBuilder().setTitle(tr("开启移动热点"))
+            .setMessage(tr("请在系统设置中开启本机WPA2移动热点，并让iPhone连接该热点。返回后继续连接CarPlay。"))
+            .setPositiveButton(tr("打开热点设置")) { _, _ -> launchHotspotSettingsForConnection() }
+            .setNegativeButton(tr("取消"), null).show()
     }
     private fun launchHotspotSettingsForConnection() {
         connectAfterHotspotSettings = true
@@ -348,31 +391,48 @@ class AndroidPlayActivity : ComponentActivity() {
     private fun audioDeviceSettings(input: Boolean) = showPage(if (input) "input" else "output")
 
     private fun renderSettingsPage() {
-        val titles = mapOf("settings" to "CarPlay设置", "phone" to "iPhone选择", "fps" to "帧率", "sound" to "声音", "input" to "输入设备", "output" to "输出设备", "orientation" to "显示方向")
+        val titles = mapOf("settings" to "CarPlay设置", "phone" to "iPhone选择", "fps" to "帧率", "sound" to "声音", "input" to "输入设备", "output" to "输出设备", "orientation" to "显示方向", "language" to "语言", "about" to "关于")
         val scroll = ScrollView(this).apply { setBackgroundColor(BG); isFillViewport = true }
         val content = column().apply { setPadding(dp(32), dp(20), dp(32), dp(28)) }
-        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        header.addView(label("‹ 返回", 17).apply {
-            setTextColor(Color.rgb(110, 157, 230)); setPadding(0, dp(14), dp(24), dp(14))
-            contentDescription = "返回上一级"; isClickable = true; setOnClickListener { returnPage() }
-        })
-        header.addView(label(titles[page] ?: "CarPlay设置", 26, true))
+        ViewCompat.setOnApplyWindowInsetsListener(scroll) { _, insets ->
+            val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
+            content.setPadding(dp(32) + cutout.left, dp(20) + cutout.top, dp(32) + cutout.right, dp(28) + cutout.bottom)
+            insets
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; isBaselineAligned = false
+        }
+        header.addView(AndroidPlayNavigation.back(this, tr("返回"), tr("返回上一级")) { returnPage() })
+        header.addView(label(titles[page] ?: "CarPlay设置", 26, true), LinearLayout.LayoutParams(0, -2, 1f))
         content.addView(header)
-        fun row(title: String, detail: String = "", value: String = "›", action: () -> Unit) {
+        fun row(title: String, detail: String = "", value: String = "›", action: (() -> Unit)? = null) {
             val card = LinearLayout(this).apply {
-                gravity = Gravity.CENTER_VERTICAL
+                gravity = Gravity.CENTER_VERTICAL; isBaselineAligned = false
                 setPadding(dp(20), dp(12), dp(20), dp(12)); minimumHeight = dp(72)
                 background = cardBackground()
                 layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) }
-                isClickable = true; isFocusable = true; setOnClickListener { action() }
-                val ripple = obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground))
-                foreground = ripple.getDrawable(0); ripple.recycle()
+                isClickable = action != null; isFocusable = action != null
+                action?.let { callback ->
+                    setOnClickListener { callback() }
+                    val ripple = obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground))
+                    foreground = ripple.getDrawable(0); ripple.recycle()
+                }
             }
             card.addView(column().apply {
                 addView(label(title, 18, true))
                 if (detail.isNotEmpty()) addView(label(detail, 14).apply { setTextColor(Color.rgb(125, 139, 160)) })
             }, LinearLayout.LayoutParams(0, -2, 1f))
-            card.addView(label(value, 18).apply { setPadding(dp(20), 0, 0, 0); setTextColor(Color.rgb(110, 157, 230)) })
+            val hasArrow = value.endsWith("›")
+            val textValue = value.removeSuffix("›").trimEnd()
+            if (textValue.isNotEmpty() && textValue != "✓") card.addView(label(textValue, 18).apply {
+                setPadding(dp(12), 0, 0, 0); gravity = Gravity.CENTER_VERTICAL
+                if (action != null) setTextColor(Color.rgb(110, 157, 230))
+            })
+            if (hasArrow || textValue == "✓") card.addView(ImageView(this).apply {
+                setImageResource(if (hasArrow) R.drawable.ic_androidplay_chevron_left else R.drawable.ic_androidplay_check)
+                if (hasArrow) rotation = 180f
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, LinearLayout.LayoutParams(dp(24), dp(24)).apply { marginStart = dp(12) })
             content.addView(card)
         }
         when (page) {
@@ -381,9 +441,60 @@ class AndroidPlayActivity : ComponentActivity() {
                 row("iPhone选择", AndroidPlayPreferences.phoneName(this)) { choosePhone() }
                 row("帧率", "下次连接生效，失败时在后台尝试较低帧率", "${AirPlayPersistence.loadFps(this)}fps  ›") { displaySettings() }
                 row("显示方向", "下次进入CarPlay时生效", if (CarPlaySettings.portrait(this)) "竖屏  ›" else "横屏  ›") { showPage("orientation") }
+                row("语言", value = AndroidPlayLanguage.label(this, AndroidPlayLanguage.selection(this)) + "  ›") { showPage("language") }
                 row("声音", "输入/输出设备与实时音量") { soundSettings() }
                 row("检查应用权限", "连接、麦克风和通知权限") { showPermissionHelp() }
                 row("断开连接", "结束CarPlay会话，系统热点保持开启") { resetWifi() }
+                row("关于", "版本、更新与日志") { showPage("about") }
+            }
+            "about" -> {
+                row("当前版本", value = updates.currentVersion)
+                row("构建版本", value = updates.build.toString())
+                row("检查更新", tr(updates.status) + if (updates.detail.isEmpty()) "" else "\n" + updates.detail,
+                    if (updates.checking) "…" else "›") { checkUpdates() }
+                val automaticSwitch = Switch(this).apply {
+                    isChecked = updates.automatic
+                    contentDescription = tr("自动检查更新")
+                    minimumHeight = dp(48)
+                }
+                val automaticCard = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; isBaselineAligned = false
+                    setPadding(dp(20), dp(12), dp(20), dp(12)); minimumHeight = dp(72)
+                    background = cardBackground()
+                    layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) }
+                    addView(label("自动检查更新", 18, true), LinearLayout.LayoutParams(0, -2, 1f))
+                    addView(automaticSwitch)
+                    isClickable = true; isFocusable = true
+                    setOnClickListener { automaticSwitch.isChecked = !automaticSwitch.isChecked }
+                }
+                automaticSwitch.setOnCheckedChangeListener { _, enabled ->
+                    updates.automatic = enabled
+                    if (enabled) checkUpdates(automatic = true)
+                }
+                content.addView(automaticCard)
+                updates.release?.let { release ->
+                    release.installer?.let { installer ->
+                        row("下载更新", release.version.toString()) { openUpdateLink(installer) }
+                    }
+                }
+                row("查看发行说明") { openUpdateLink(updates.release?.page ?: AndroidPlayUpdates.RELEASES) }
+                row("项目主页", "github.com/Roylyl/AndroidPlay") { openUpdateLink("https://github.com/Roylyl/AndroidPlay") }
+                row("导出日志") {
+                    if (updates.hasLogs()) logDestination.launch("AndroidPlay-${updates.currentVersion}-logs.txt")
+                    else toast("暂无日志可导出")
+                }
+                if (updates.exportStatus.isNotEmpty()) content.addView(label(tr(updates.exportStatus) + if (updates.exportDetail.isEmpty()) "" else "\n" + updates.exportDetail, 14))
+            }
+            "language" -> {
+                content.addView(label("语言更改立即应用，不中断CarPlay连接。", 15))
+                val selected = AndroidPlayLanguage.selection(this)
+                for (choice in AndroidPlayLanguage.choices) row(AndroidPlayLanguage.label(this, choice), value = if (choice == selected) "✓" else "") {
+                    if (choice != selected) {
+                        AndroidPlayLanguage.save(this, choice)
+                        AndroidPlaySessionService.refreshNotification(this)
+                        recreate()
+                    }
+                }
             }
             "orientation" -> {
                 content.addView(label("AndroidPlay自身页面支持横竖屏旋转；CarPlay默认只允许横屏。更改后下次进入CarPlay时生效。", 15))
@@ -453,7 +564,7 @@ class AndroidPlayActivity : ComponentActivity() {
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) }
         }
         val title = label("", 18, true)
-        fun refresh() { title.text = "${if (call) "通话音量" else "媒体音量（音乐/导航）"} · ${manager.getStreamVolume(stream)}/${manager.getStreamMaxVolume(stream)}" }
+        fun refresh() { title.text = tr("${if (call) "通话音量" else "媒体音量（音乐/导航）"} · ${manager.getStreamVolume(stream)}/${manager.getStreamMaxVolume(stream)}") }
         refresh(); card.addView(title)
         card.addView(SeekBar(this).apply {
             min = manager.getStreamMinVolume(stream); max = manager.getStreamMaxVolume(stream); progress = manager.getStreamVolume(stream)
@@ -473,11 +584,11 @@ class AndroidPlayActivity : ComponentActivity() {
     }
     private fun editHotspot(resumeConnection: Boolean = false, readFailed: Boolean = false) {
         val content = column().apply { setPadding(dp(24), dp(8), dp(24), dp(8)) }
-        val ssid = EditText(dialogContext).apply { hint = "热点名称"; setSingleLine(); setText(AirPlayPersistence.loadManualHotspotSsid(this@AndroidPlayActivity)) }
-        val password = EditText(dialogContext).apply { hint = "WPA2热点密码（8至63位）"; setSingleLine(); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD; setText(AirPlayPersistence.loadManualHotspotPassphrase(this@AndroidPlayActivity)) }
+        val ssid = EditText(dialogContext).apply { hint = tr("热点名称"); setSingleLine(); setText(AirPlayPersistence.loadManualHotspotSsid(this@AndroidPlayActivity)) }
+        val password = EditText(dialogContext).apply { hint = tr("WPA2热点密码（8至63位）"); setSingleLine(); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD; setText(AirPlayPersistence.loadManualHotspotPassphrase(this@AndroidPlayActivity)) }
         content.addView(label((if (readFailed) "自动获取热点信息失败，请手动输入。" else "") + "请先在Android系统中开启WPA2热点，在这里填写完全相同的名称和密码，再让iPhone连接该热点。", 15))
         content.addView(ssid); content.addView(password)
-        val dialog = dialogBuilder().setTitle("本机系统热点").setView(content).setPositiveButton("保存", null).setNegativeButton("取消") { _, _ -> if (resumeConnection) hotspotConfirmed = false }.create()
+        val dialog = dialogBuilder().setTitle(tr("本机系统热点")).setView(content).setPositiveButton(tr("保存"), null).setNegativeButton(tr("取消")) { _, _ -> if (resumeConnection) hotspotConfirmed = false }.create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val name = ssid.text.toString().trim(); val key = password.text.toString()
@@ -504,18 +615,20 @@ class AndroidPlayActivity : ComponentActivity() {
         if (afterSave != null) afterSave() else if (reconnect) connect() else toast("已保存，请点击打开CarPlay重新协商")
     }
     private fun resetWifi() {
+        page = "home"
+        pageHistory.clear()
         CarPlayBackgroundSession.stop { runOnUiThread {
             render()
             toast("连接已停止，系统热点保持开启。请点击打开CarPlay重试。")
         } }
     }
     private fun showPermissionHelp() {
-        dialogBuilder().setTitle("应用权限")
-            .setMessage("连接需要蓝牙和附近设备权限，旧版Android还需要精确位置权限。麦克风用于Siri和通话，通知用于显示连接状态。请在系统弹窗中允许；已拒绝的权限可在应用设置中开启。")
-            .setPositiveButton("重新申请") { _, _ -> requestPermissions() }
-            .setNeutralButton("应用设置") { _, _ ->
+        dialogBuilder().setTitle(tr("应用权限"))
+            .setMessage(tr("连接需要蓝牙和附近设备权限，旧版Android还需要精确位置权限。麦克风用于Siri和通话，通知用于显示连接状态。请在系统弹窗中允许；已拒绝的权限可在应用设置中开启。"))
+            .setPositiveButton(tr("重新申请")) { _, _ -> requestPermissions() }
+            .setNeutralButton(tr("应用设置")) { _, _ ->
                 runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
-            }.setNegativeButton("关闭", null).show()
+            }.setNegativeButton(tr("关闭"), null).show()
     }
     private fun openSystem(action: String) {
         runCatching { startActivity(Intent(action)) }.onFailure { toast("无法打开系统设置，请手动打开") }
@@ -523,10 +636,11 @@ class AndroidPlayActivity : ComponentActivity() {
     private val dialogContext: android.content.Context get() = android.view.ContextThemeWrapper(this,
         if (CarPlaySettings.night(this)) android.R.style.Theme_Material_Dialog_Alert else android.R.style.Theme_Material_Light_Dialog_Alert)
     private fun dialogBuilder() = AlertDialog.Builder(dialogContext)
-    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    private fun toast(message: String) = Toast.makeText(this, tr(message), Toast.LENGTH_LONG).show()
     private fun column() = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
     private fun label(value: String, size: Int, bold: Boolean = false) = TextView(this).apply {
-        text = value; textSize = size.toFloat(); setTextColor(if (CarPlaySettings.night(this@AndroidPlayActivity)) Color.rgb(232, 239, 250) else Color.rgb(22, 32, 48)); setPadding(0, dp(6), 0, dp(6))
+        includeFontPadding = false
+        text = tr(value); textSize = size.toFloat(); setTextColor(if (CarPlaySettings.night(this@AndroidPlayActivity)) Color.rgb(232, 239, 250) else Color.rgb(22, 32, 48)); setPadding(0, dp(6), 0, dp(6))
         if (bold) typeface = Typeface.DEFAULT_BOLD
     }
     private fun cardBackground() = GradientDrawable().apply {
@@ -534,11 +648,12 @@ class AndroidPlayActivity : ComponentActivity() {
         cornerRadius = dp(18).toFloat()
     }
     private fun button(value: String, action: () -> Unit) = Button(this).apply {
-        text = value; isAllCaps = false; textSize = 18f; typeface = Typeface.DEFAULT_BOLD
+        text = tr(value); isAllCaps = false; textSize = 18f; typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.START or Gravity.CENTER_VERTICAL
+        includeFontPadding = false; minimumHeight = dp(72)
         setTextColor(Color.rgb(110, 157, 230)); setPadding(dp(20), dp(12), dp(20), dp(12))
         background = cardBackground()
-        layoutParams = LinearLayout.LayoutParams(-1, dp(72)).apply { topMargin = dp(10) }
+        layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) }
         val ripple = obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground))
         foreground = ripple.getDrawable(0); ripple.recycle()
         setOnClickListener { action() }

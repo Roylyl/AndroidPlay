@@ -204,11 +204,11 @@ class ManualHotspotManager(
         } catch (_: SocketException) {
             null
         } ?: return null
-        val primaryInterface = connectivityManager?.activeNetwork
-            ?.let { connectivityManager.getLinkProperties(it)?.interfaceName }
+        val upstreamInterfaces = connectivityManager?.allNetworks
+            ?.mapNotNull { connectivityManager.getLinkProperties(it)?.interfaceName }?.toSet().orEmpty()
         return Collections.list(interfaces)
             .asSequence()
-            .filter { isUsableInterface(it, primaryInterface) }
+            .filter { isUsableInterface(it, upstreamInterfaces) }
             .mapNotNull { networkInterface ->
                 networkInterface.hotspotAddress()?.let { address ->
                     LocalHotspotInterface(
@@ -226,9 +226,9 @@ class ManualHotspotManager(
 
     private fun isUsableInterface(
         networkInterface: NetworkInterface,
-        primaryInterface: String?,
+        upstreamInterfaces: Set<String>,
     ): Boolean = try {
-        networkInterface.name != primaryInterface &&
+        ManualHotspotInterfacePolicy.isCandidate(networkInterface.name, upstreamInterfaces) &&
             !networkInterface.isLoopback &&
             networkInterface.isUp &&
             EXCLUDED_INTERFACE_PREFIXES.none { networkInterface.name.startsWith(it) }

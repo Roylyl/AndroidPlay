@@ -15,6 +15,20 @@ import com.shilapi.xcertplay.orchestration.ManualHotspotSecurity
 
 /** Best effort only: many stock systems restrict access to the tethering password. */
 internal object AndroidPlayHotspot {
+    private var concurrencyWarningShown = false
+    fun warnIfConcurrent(context: Context) {
+        val wifiEnabled = runCatching {
+            context.applicationContext.getSystemService(WifiManager::class.java)?.isWifiEnabled == true
+        }.getOrDefault(false)
+        val concurrent = wifiEnabled && isEnabled(context) == true
+        if (concurrent && !concurrencyWarningShown) {
+            android.widget.Toast.makeText(context,
+                AndroidPlayLanguage.text(context, "同时开启热点和无线局域网可能会造成CarPlay连接不稳定"),
+                android.widget.Toast.LENGTH_LONG).show()
+        }
+        concurrencyWarningShown = concurrent
+    }
+
     /** null means the firmware hides hotspot state; never mistake stored credentials for an active AP. */
     fun isEnabled(context: Context): Boolean? {
         val reported = runCatching {

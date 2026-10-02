@@ -70,6 +70,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 
  */
 class CarPlayHostActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(AndroidPlayLanguage.context(newBase))
+    }
+    private fun tr(value: String) = AndroidPlayLanguage.text(this, value)
     private var connectionPanel: View? = null
     private var wifiRecoveryButton: View? = null
     private lateinit var airPlayIdentity: AirPlayIdentity
@@ -81,7 +85,7 @@ class CarPlayHostActivity : ComponentActivity() {
             modelIdentifier = normalizedModel(),
             manufacturer = normalizedManufacturer(),
             serialNumber = "ANDROIDPLAY-" + AndroidPlayBootstrap.deviceId(airPlayIdentity).replace(":", ""),
-            firmwareVersion = "1.1.0",
+            firmwareVersion = "1.2.0",
             hardwareVersion = "1.0",
             carPlayUsbInterfaceNumber = 3,
             locationInformationEnabled = locationReportingEnabled,
@@ -288,7 +292,7 @@ class CarPlayHostActivity : ComponentActivity() {
                         if (generation != restartGeneration || controller !== current) return@sendBack
                         if (!sent) {
                             android.widget.Toast.makeText(this@CarPlayHostActivity,
-                                "CarPlay返回操作未发送，请等待连接恢复", android.widget.Toast.LENGTH_SHORT).show()
+                                tr("CarPlay返回操作未发送，请等待连接恢复"), android.widget.Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
@@ -398,12 +402,26 @@ class CarPlayHostActivity : ComponentActivity() {
         applyFullscreenMode()
     }
 
+    private val hotspotWarningTick = object : Runnable {
+        override fun run() {
+            AndroidPlayHotspot.warnIfConcurrent(this@CarPlayHostActivity)
+            mainHandler.postDelayed(this, 3000)
+        }
+    }
+    override fun onPause() {
+        mainHandler.removeCallbacks(hotspotWarningTick)
+        super.onPause()
+    }
     override fun onResume() {
         super.onResume()
+        mainHandler.removeCallbacks(hotspotWarningTick)
+        mainHandler.post(hotspotWarningTick)
         locationPermissionAvailable = hasFineLocationPermission()
         wirelessPermissionsReady = !wirelessEnabled || hasRequiredWirelessPermissions()
         maybeStartCarPlay()
         applyFullscreenMode()
+        AndroidPlayLanguage.refreshTexts(window.decorView)
+        stageStatusView?.let { AndroidPlayLanguage.setText(it, friendlyStage(latestStage)) }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -475,29 +493,29 @@ class CarPlayHostActivity : ComponentActivity() {
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         })
         val stage = TextView(this).apply {
-            text = "正在准备CarPlay…"; textSize = 22f; gravity = Gravity.CENTER
+            AndroidPlayLanguage.setText(this, "正在准备CarPlay…"); textSize = 22f; gravity = Gravity.CENTER
             setTextColor(Color.rgb(241, 245, 252))
         }
         panel.addView(stage)
         panel.addView(TextView(this).apply {
-            text = "请让iPhone连接本机系统热点，并保持两端蓝牙开启。\n接收服务会在热点网络广播；首次使用请允许CarPlay。"
+            AndroidPlayLanguage.setText(this, "请让iPhone连接本机系统热点，并保持两端蓝牙开启。\n接收服务会在热点网络广播；首次使用请允许CarPlay。")
             textSize = 17f; gravity = Gravity.CENTER; setTextColor(Color.rgb(168, 182, 202))
             setPadding(0, dp(14), 0, dp(24))
         })
         panel.addView(Button(this).apply {
-            text = "停止并重试"; isAllCaps = false; textSize = 18f
+            AndroidPlayLanguage.setText(this, "停止并重试"); isAllCaps = false; textSize = 18f
             visibility = View.GONE
             setOnClickListener { showAndroidPlayHome("wireless-recovery") }
             wifiRecoveryButton = this
         }, LinearLayout.LayoutParams(dp(300), dp(64)).apply { bottomMargin = dp(12) })
         panel.addView(Button(this).apply {
-            text = "返回AndroidPlay"; isAllCaps = false; textSize = 18f
+            AndroidPlayLanguage.setText(this, "返回AndroidPlay"); isAllCaps = false; textSize = 18f
             setTextColor(Color.rgb(12, 17, 27))
             background = GradientDrawable().apply { setColor(Color.rgb(166, 200, 255)); cornerRadius = dp(20).toFloat() }
             setOnClickListener { showAndroidPlayHome() }
         }, LinearLayout.LayoutParams(dp(300), dp(64)))
         panel.addView(TextView(this).apply {
-            text = "在CarPlay中选择AndroidPlay入口，可返回连接管理。"
+            AndroidPlayLanguage.setText(this, "在CarPlay中选择AndroidPlay入口，可返回连接管理。")
             textSize = 13f; gravity = Gravity.CENTER; setTextColor(Color.rgb(168, 182, 202)); setPadding(0, dp(20), 0, 0)
         })
         val waitingScroll = ScrollView(this).apply {
@@ -646,7 +664,7 @@ class CarPlayHostActivity : ComponentActivity() {
             CarPlayBackgroundSession.actualVideoParameters = text
             if (actualParametersShown != text) {
                 actualParametersShown = text
-                android.widget.Toast.makeText(this, text, android.widget.Toast.LENGTH_SHORT)
+                android.widget.Toast.makeText(this, tr(text), android.widget.Toast.LENGTH_SHORT)
                     .apply { setGravity(Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, 0, (48 * resources.displayMetrics.density).toInt()) }.show()
             }
         }
@@ -758,8 +776,7 @@ class CarPlayHostActivity : ComponentActivity() {
         sink = snapshot.sink
         CarPlayBackgroundSession.store(snapshot.controller, snapshot.sink, snapshot.width, snapshot.height, this) { completion ->
             runOnUiThread {
-                shutdown(false, "AndroidPlay disconnect", completion)
-                finish()
+                endConnection("AndroidPlay disconnect", completion)
             }
         }
         if (snapshot.width > 0 && snapshot.height > 0) {
@@ -863,8 +880,7 @@ class CarPlayHostActivity : ComponentActivity() {
         controller = next
         CarPlayBackgroundSession.store(next, renderer, size.width, size.height, this) { completion ->
             runOnUiThread {
-                shutdown(terminateProcess = false, reason = "AndroidPlay disconnect", completion = completion)
-                finish()
+                endConnection("AndroidPlay disconnect", completion)
             }
         }
         try {
@@ -980,9 +996,10 @@ class CarPlayHostActivity : ComponentActivity() {
     }
 
 
-    private fun endConnection(reason: String) {
+    private fun endConnection(reason: String, completion: () -> Unit = {}) {
         activeScreenStreamTypes.clear()
-        shutdown(false, reason)
+        shutdown(false, reason, completion)
+        showAndroidPlayHome()
         finish()
     }
 
@@ -1062,7 +1079,7 @@ class CarPlayHostActivity : ComponentActivity() {
         latestStage = message
         val visible = friendlyStage(message)
         CarPlayBackgroundSession.connectionStatus = visible
-        stageStatusView?.text = visible
+        stageStatusView?.let { AndroidPlayLanguage.setText(it, visible) }
         updateDebugOverlays()
     }
 

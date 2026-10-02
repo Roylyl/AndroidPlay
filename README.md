@@ -5,7 +5,7 @@
 <p align="center">让Android手机、平板或车机成为无线CarPlay接收端，通过系统热点与蓝牙连接iPhone，显示画面并播放声音。</p>
 
 <p align="center">
-  <a href="mobile/build.gradle.kts"><img src="https://img.shields.io/badge/version-1.1.0-2563eb?style=flat-square" alt="版本1.1.0"></a>
+  <a href="mobile/build.gradle.kts"><img src="https://img.shields.io/badge/version-1.2.0-2563eb?style=flat-square" alt="版本1.2.0"></a>
   <a href="#使用条件"><img src="https://img.shields.io/badge/platform-Android%209%2B-555555?style=flat-square" alt="运行平台"></a>
   <a href="#来源与许可"><img src="https://img.shields.io/badge/license-GPLv3%20%2F%20AGPLv3-2563eb?style=flat-square" alt="项目许可"></a>
 </p>
@@ -32,7 +32,7 @@
 - Android端使用WPA2系统热点，密码为8—63位。
 - 安装包含可用配件认证资源的APK；自行构建时按下文配置认证目录。
 
-在[GitHubReleases](https://github.com/Roylyl/AndroidPlay/releases)获取APK，或[从源码构建](#从源码构建)。应用包名为`com.androidplay.app`，当前版本1.1.0。
+在[GitHubReleases](https://github.com/Roylyl/AndroidPlay/releases)获取APK，或[从源码构建](#从源码构建)。应用包名为`com.androidplay.app`，当前版本1.2.0。
 
 ### 安装与连接
 
@@ -54,6 +54,8 @@
 - 声音与设备：实时调整媒体/通话音量，分别选择系统可见的输入和输出设备。
 - 系统媒体控件：在通知栏、锁屏和播放面板显示歌曲、封面与进度，回传播放、暂停、切歌及可用的进度跳转。
 
+- 关于与更新：查看版本、检查GitHub正式发行版，支持自动更新通知、APK下载入口与TXT日志导出。
+
 ## 其他平台
 
 使用Android设备时选择AndroidPlay；如果更习惯在电脑上操作CarPlay，可以看看下面两个桌面项目。
@@ -70,11 +72,17 @@
 | 设置 | 用途 |
 | --- | --- |
 | iPhone选择 | 选择已配对的连接目标 |
+| 语言 | 跟随系统、简体中文、繁體中文、English；立即应用 |
 | 帧率 | 保存30/60/90/120fps请求档位，下次主动连接生效 |
 | 显示方向 | 横屏或竖屏，下次进入CarPlay时生效 |
 | 声音 | 实时媒体/通话音量，输入与输出设备 |
 | 检查应用权限 | 重新申请连接、麦克风和通知权限 |
-| 断开连接 | 结束会话，保留系统热点 |
+| 断开连接 | 结束会话，关闭CarPlay页面并回到首页；保留系统热点 |
+| 关于 | 版本号、检查更新、自动更新提醒、日志导出 |
+
+语言选项位于“CarPlay设置→语言”。默认跟随Android系统；简体中文和繁體中文按系统语言地区匹配，其他系统语言使用English。语言切换覆盖AndroidPlay首页、设置、提示和连接通知，不改变iPhone上的CarPlay语言，也不中断会话。
+
+主动断开、iPhone断开或连接丢失时，CarPlay页面自动关闭并恢复AndroidPlay首页。
 
 更改显示或帧率不会自动重连。回到首页点击“打开CarPlay”时，设置有变化会重新协商；设置未变化则返回已有画面。投屏页的Android返回键向CarPlay发送返回操作，CarPlay中的AndroidPlay入口可返回首页并保持连接。
 
@@ -91,6 +99,14 @@
 音乐与导航使用媒体音量，通话使用通话音量，Siri保留独立音频用途。输入/输出默认跟随系统，设备选择立即应用；设备拔出后暂用系统默认路由，重新接入时恢复偏好。具体路由由Android和设备驱动决定。
 
 封面按曲目身份关联，标题或歌词变化不作为切歌，迟到的上一首封面不会覆盖新歌。QQ音乐等App通过标题字段发送的歌词可在媒体标题位置显示，本版没有独立歌词字段。音乐App提供时长并允许跳转时，可拖动系统进度条；未提供的字段可能为空，应用不会从网络搜索封面。
+
+### 关于、更新与日志
+
+进入“CarPlay设置”最后的“关于”页，查看应用版本与构建号，点击“检查更新”对比GitHub正式发行版，并打开新版APK或发行说明。
+
+“自动检查更新”默认开启，应用启动或回到前台时每天检查一次。允许通知权限后会通过系统通知提醒新版；未授权时在应用内提示，同一版本确认后不重复提醒。手动检查不受每日频率限制，网络或GitHub访问失败时显示实际错误。通过浏览器下载APK后，由你确认安装，不自动安装。
+
+点击“导出日志”，在系统文件选择器中指定保存位置，即可导出最近连接记录为TXT。日志会过滤网络密码、认证内容与常见设备标识，不导出认证文件或应用设置；不需要额外的存储权限。没有连接记录时会提示暂无日志。
 
 ## 权限与常见问题
 
@@ -157,6 +173,8 @@ Windows产物位于`mobile/build/outputs/apk/debug/mobile-debug.apk`。这些命
 | `scripts/` | 本地构建与图标脚本 |
 
 ## 更新日志
+
+1.2.0加入跟随系统、简体中文、繁體中文与English四种应用语言选项，首页、设置、连接提示及通知统一切换；主动与被动断开都会关闭CarPlay页面并恢复首页。
 
 1.1.0整理首页与逐级设置，加入显示方向选择、实时音量与音频设备、系统媒体控件、封面关联及进度跳转，完善断开清理和高帧率回退。设置变更在下次主动连接时应用，首页保留热点获取与权限引导。
 

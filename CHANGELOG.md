@@ -1,3 +1,10 @@
+# 1.2.0 — Language and disconnect navigation
+
+- Add app language choices: system default, Simplified Chinese, Traditional Chinese and English.
+- Apply the selected language to home/settings pages, connection guidance, permission explanations and connection/media notifications.
+- Close the CarPlay activity after explicit or passive disconnect and restore the AndroidPlay home page.
+- Changing app language preserves the CarPlay session and the iPhone's own interface language.
+
 # 0.2.0 — BYD navigation and connection improvements
 
 - Standalone windshield HUD arrows, distance and street names on the verified DiLink5.1 firmware; no ADB, root or computer helper.
@@ -27,3 +34,19 @@
 - Replaced the download site with a five-language suspension notice.
 
 The APK was subsequently rebuilt and restored as described above. Existing copies cannot be recalled by a Git history reset.
+
+- 新增独立关于页，显示版本号和构建号。
+- 支持手动检查GitHub正式发行版，每天自动检查并提醒新版，提供安装包或发行说明入口。
+- 支持导出TXT连接日志，过滤网络密码、认证内容与常见设备标识。
+
+- 返回箭头、列表箭头和选中标记改用矢量图形，与文字垂直居中对齐。
+- 返回入口保留至少48dp点击区域，适配不同字号。
+- 设置页避让屏幕挖孔；首页按钮按内容调整高度，避免大字号裁切。
+- 自动检查使用开关，移除更新、日志操作的常驻解释文字，保留实际结果与错误。
+- 版本号和构建号行不再响应无作用的点击。
+- 避免重复的发行说明入口；关闭自动检查后不再产生新的自动更新提醒。
+
+### 1.2.0构建45
+
+- 修正手动热点误选移动数据接口的问题。
+- 热点与Wi-Fi同时开启时显示底部连接稳定性提醒。

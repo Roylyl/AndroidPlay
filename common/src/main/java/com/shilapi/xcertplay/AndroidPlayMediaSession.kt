@@ -126,7 +126,7 @@ internal class AndroidPlayMediaSession(private val context: Context, private val
             val pending = PendingIntent.getService(context, 100 + code,
                 Intent(context, AndroidPlaySessionService::class.java).setAction(AndroidPlaySessionService.ACTION_MEDIA).putExtra("media", code),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            return Notification.Action.Builder(icon, label, pending).build()
+            return Notification.Action.Builder(icon, AndroidPlayLanguage.text(context, label), pending).build()
         }
         builder.setContentTitle(value.title).setContentText(value.artist.ifEmpty { value.appName })
             .setSubText(value.album).setStyle(Notification.MediaStyle().setMediaSession(session.sessionToken).setShowActionsInCompactView(0, 1, 2))
