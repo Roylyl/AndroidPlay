@@ -8,8 +8,15 @@
   <a href="mobile/build.gradle.kts"><img src="https://img.shields.io/badge/version-1.1.0-2563eb?style=flat-square" alt="版本1.1.0"></a>
   <a href="#使用条件"><img src="https://img.shields.io/badge/platform-Android%209%2B-555555?style=flat-square" alt="运行平台"></a>
   <a href="#来源与许可"><img src="https://img.shields.io/badge/license-GPLv3%20%2F%20AGPLv3-2563eb?style=flat-square" alt="项目许可"></a>
-  <a href="https://github.com/Roylyl/AndroidPlay/releases"><img src="https://img.shields.io/github/downloads/Roylyl/AndroidPlay/total?style=flat-square" alt="发行附件累计下载量"></a>
-  <a href="https://github.com/Roylyl/AndroidPlay/stargazers"><img src="https://img.shields.io/github/stars/Roylyl/AndroidPlay?style=flat-square" alt="GitHub Stars"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Roylyl/AndroidPlay/releases"><img src="https://img.shields.io/github/downloads/Roylyl/AndroidPlay/total?style=flat-square&amp;label=downloads&amp;color=2563eb" alt="发行附件累计下载量"></a>
+  <a href="https://github.com/Roylyl/AndroidPlay/stargazers"><img src="https://img.shields.io/github/stars/Roylyl/AndroidPlay?style=flat-square&amp;label=stars&amp;color=2563eb" alt="GitHub Star数"></a>
+  <a href="https://github.com/Roylyl/AndroidPlay/forks"><img src="https://img.shields.io/github/forks/Roylyl/AndroidPlay?style=flat-square&amp;label=forks&amp;color=555555" alt="GitHub Fork数"></a>
+  <a href="https://github.com/Roylyl/AndroidPlay/issues"><img src="https://img.shields.io/github/issues/Roylyl/AndroidPlay?style=flat-square&amp;label=issues&amp;color=555555" alt="开放Issue数"></a>
+  <a href="https://github.com/Roylyl/AndroidPlay/pulls"><img src="https://img.shields.io/github/issues-pr/Roylyl/AndroidPlay?style=flat-square&amp;label=pull%20requests&amp;color=555555" alt="开放Pull Request数"></a>
+  <a href="https://github.com/Roylyl/AndroidPlay/commits"><img src="https://img.shields.io/github/last-commit/Roylyl/AndroidPlay?style=flat-square&amp;label=last%20commit&amp;color=555555" alt="最近提交时间"></a>
 </p>
 
 <p align="center"><a href="#快速入门">快速入门</a> · <a href="#主要功能">主要功能</a> · <a href="#其他平台">其他平台</a> · <a href="#从源码构建">源码构建</a> · <a href="#来源与许可">来源与许可</a></p>
