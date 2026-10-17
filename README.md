@@ -21,7 +21,7 @@
 
 <p align="center"><a href="#快速入门">快速入门</a> · <a href="#主要功能">主要功能</a> · <a href="#其他平台">其他平台</a> · <a href="#从源码构建">源码构建</a> · <a href="#来源与许可">来源与许可</a></p>
 
-<p align="center">其他设备：<a href="https://github.com/Roylyl/MacPlay">MacPlay</a> · <a href="https://github.com/Roylyl/WinPlay">WinPlay</a></p>
+<p align="center">其他平台：<a href="https://github.com/Roylyl/WinPlay">Windows</a> · <a href="https://github.com/Roylyl/MacPlay">macOS</a> · <a href="https://github.com/Roylyl/LinuxPlay">Linux</a></p>
 
 ## 快速入门
 
@@ -58,12 +58,13 @@
 
 ## 其他平台
 
-使用Android设备时选择AndroidPlay；如果更习惯在电脑上操作CarPlay，可以看看下面两个桌面项目。
+如果需要在其他设备上使用CarPlay，可以选择对应平台的项目。
 
-| 项目 | 平台 | 适合的使用场景 |
+| 项目 | 适用平台 | 连接方式 |
 | --- | --- | --- |
-| [MacPlay](https://github.com/Roylyl/MacPlay) | macOS14及以上 | 适合Mac用户。支持USB直连和共用Wi-Fi无线连接，提供原生设置界面、多屏显示与系统媒体控件。 |
-| [WinPlay](https://github.com/Roylyl/WinPlay) | Windows10/11x64 | 适合Windows电脑。支持本机移动热点和现有局域网两种无线模式，提供独立画面窗口与托盘操作。 |
+| [WinPlay](https://github.com/Roylyl/WinPlay) | Windows10/11x64 | 本机移动热点或现有局域网无线连接 |
+| [MacPlay](https://github.com/Roylyl/MacPlay) | macOS14及以上 | USB直连或共用局域网无线连接 |
+| [LinuxPlay](https://github.com/Roylyl/LinuxPlay) | Linux桌面（X11/XWayland） | 本机热点或现有局域网无线连接 |
 
 ## 使用与设置
 
